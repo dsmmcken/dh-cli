@@ -84,6 +84,30 @@ class TestKeyBindings:
                 break
         assert ctrl_l_found, "Ctrl+L binding not found"
 
+    def test_enter_binding_exists(self):
+        """Enter binding is registered for submit."""
+        from deephaven_cli.repl.prompt.keybindings import create_key_bindings
+
+        bindings = create_key_bindings()
+        enter_found = False
+        for binding in bindings.bindings:
+            if Keys.Enter in binding.keys:
+                enter_found = True
+                break
+        assert enter_found, "Enter binding not found"
+
+    def test_alt_enter_binding_exists(self):
+        """Alt+Enter (Escape+Enter) binding is registered for newline."""
+        from deephaven_cli.repl.prompt.keybindings import create_key_bindings
+
+        bindings = create_key_bindings()
+        alt_enter_found = False
+        for binding in bindings.bindings:
+            if Keys.Escape in binding.keys and Keys.Enter in binding.keys:
+                alt_enter_found = True
+                break
+        assert alt_enter_found, "Alt+Enter (Escape+Enter) binding not found"
+
 
 class TestSession:
     """Tests for session.py."""
