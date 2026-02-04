@@ -197,17 +197,41 @@ def main() -> int:
     return EXIT_SUCCESS
 
 
+# Inline script for animation subprocess (avoids import overhead)
+_ANIMATION_SCRIPT = '''
+import sys
+import time
+frame = 0
+while True:
+    num_dots = (frame % 3) + 1
+    sys.stdout.write(f"\\rStarting Deephaven{'.' * num_dots:<3}")
+    sys.stdout.flush()
+    frame += 1
+    time.sleep(0.25)
+'''
+
+
 def run_repl(
     port: int, jvm_args: list[str], verbose: bool = False, vi_mode: bool = False
 ) -> int:
     """Run the interactive REPL."""
+    import subprocess
     from deephaven_cli.server import DeephavenServer
     from deephaven_cli.client import DeephavenClient
     from deephaven_cli.repl.console import DeephavenConsole
 
+    animation_proc = None
+
     if verbose:
         print(f"Starting Deephaven server on port {port}...")
         print("(this may take a moment for JVM initialization)")
+    else:
+        # Start animation in a separate process (avoids GIL)
+        animation_proc = subprocess.Popen(
+            [sys.executable, "-c", _ANIMATION_SCRIPT],
+            stdout=sys.stdout,
+            stderr=subprocess.DEVNULL,
+        )
 
     try:
         with DeephavenServer(port=port, jvm_args=jvm_args, quiet=not verbose) as server:
@@ -215,6 +239,14 @@ def run_repl(
                 print("Server started. Connecting client...")
 
             with DeephavenClient(port=port) as client:
+                # Stop animation now that we're connected
+                if animation_proc:
+                    animation_proc.terminate()
+                    animation_proc.wait(timeout=1.0)
+                    # Clear the connecting message
+                    sys.stdout.write("\r" + " " * 25 + "\r")
+                    sys.stdout.flush()
+
                 if verbose:
                     print("Connected!\n")
                     print("Deephaven REPL")
@@ -224,9 +256,17 @@ def run_repl(
                 console.interact()
 
     except KeyboardInterrupt:
+        if animation_proc:
+            animation_proc.terminate()
+            sys.stdout.write("\r" + " " * 25 + "\r")
+            sys.stdout.flush()
         print("\nInterrupted.")
         return EXIT_INTERRUPTED
     except Exception as e:
+        if animation_proc:
+            animation_proc.terminate()
+            sys.stdout.write("\r" + " " * 25 + "\r")
+            sys.stdout.flush()
         print(f"Error: {e}", file=sys.stderr)
         return EXIT_CONNECTION_ERROR
 
