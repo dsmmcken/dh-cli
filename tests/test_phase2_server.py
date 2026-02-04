@@ -40,6 +40,11 @@ class TestDeephavenServerUnit:
         server.stop()  # Should not raise
         assert server.is_running is False
 
+    def test_actual_port_before_start(self):
+        """Test actual_port returns requested port before server starts."""
+        server = DeephavenServer(port=12345)
+        assert server.actual_port == 12345
+
 
 # =============================================================================
 # Integration tests - these start the server and require Java 11+
@@ -74,6 +79,11 @@ class TestDeephavenServerIntegration:
         """Test server has the expected port."""
         assert running_server.port >= 10100
         assert running_server.port <= 10999
+
+    def test_actual_port_matches_after_start(self, running_server):
+        """Test actual_port returns the bound port after server starts."""
+        assert running_server.actual_port == running_server.port
+        assert running_server.actual_port >= 10100
 
     def test_server_double_start_raises(self, running_server):
         """Test starting an already-started server raises error."""

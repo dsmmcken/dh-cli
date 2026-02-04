@@ -235,10 +235,11 @@ def run_repl(
 
     try:
         with DeephavenServer(port=port, jvm_args=jvm_args, quiet=not verbose) as server:
+            actual_port = server.actual_port
             if verbose:
-                print("Server started. Connecting client...")
+                print(f"Server started on port {actual_port}. Connecting client...")
 
-            with DeephavenClient(port=port) as client:
+            with DeephavenClient(port=actual_port) as client:
                 # Stop animation now that we're connected
                 if animation_proc:
                     animation_proc.terminate()
@@ -252,7 +253,7 @@ def run_repl(
                     print("Deephaven REPL")
                     print("Type 'exit()' or press Ctrl+D to quit.\n")
 
-                console = DeephavenConsole(client, port=port, vi_mode=vi_mode)
+                console = DeephavenConsole(client, port=actual_port, vi_mode=vi_mode)
                 console.interact()
 
     except KeyboardInterrupt:
@@ -324,10 +325,11 @@ def run_exec(
             print(f"Starting Deephaven server on port {port}...", file=sys.stderr)
 
         with DeephavenServer(port=port, jvm_args=jvm_args, quiet=not verbose) as server:
+            actual_port = server.actual_port
             if verbose:
-                print("Connecting client...", file=sys.stderr)
+                print(f"Server on port {actual_port}. Connecting client...", file=sys.stderr)
 
-            with DeephavenClient(port=port) as client:
+            with DeephavenClient(port=actual_port) as client:
                 if verbose:
                     print("Executing script...", file=sys.stderr)
 
@@ -404,10 +406,11 @@ def run_app(script_path: str, port: int, jvm_args: list[str], verbose: bool = Fa
 
     try:
         with DeephavenServer(port=port, jvm_args=jvm_args, quiet=not verbose) as server:
+            actual_port = server.actual_port
             if verbose:
-                print(f"Server started on port {port}", flush=True)
+                print(f"Server started on port {actual_port}", flush=True)
 
-            with DeephavenClient(port=port) as client:
+            with DeephavenClient(port=actual_port) as client:
                 if verbose:
                     print(f"Running {script_path}...", flush=True)
 

@@ -3,11 +3,24 @@ from __future__ import annotations
 
 import atexit
 import os
+import socket
 import sys
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from deephaven_server import Server
+
+
+def _is_port_available(port: int) -> bool:
+    """Check if a port is available for binding."""
+    if port == 0:
+        return True  # OS will assign
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        try:
+            s.bind(('localhost', port))
+            return True
+        except OSError:
+            return False
 
 
 class DeephavenServer:
@@ -21,12 +34,23 @@ class DeephavenServer:
         self._started = False
 
     def start(self) -> DeephavenServer:
-        """Start the Deephaven server."""
+        """Start the Deephaven server.
+
+        If the requested port is unavailable, automatically falls back to
+        an OS-assigned port (port 0).
+        """
         if self._started:
             raise RuntimeError("Server already started")
 
         # Import here to avoid JVM initialization on import
         from deephaven_server import Server
+
+        # Check port availability and fall back to auto-assign if needed
+        port_to_use = self.port
+        if not _is_port_available(port_to_use):
+            if not self.quiet:
+                print(f"Port {port_to_use} is in use, finding available port...")
+            port_to_use = 0
 
         # Suppress JVM/server output when quiet mode is enabled
         # Must redirect at both file descriptor level (JVM writes to fd 1/2)
@@ -50,7 +74,7 @@ class DeephavenServer:
             sys.stderr = devnull_file
 
         try:
-            self._server = Server(port=self.port, jvm_args=self.jvm_args)
+            self._server = Server(port=port_to_use, jvm_args=self.jvm_args)
             self._server.start()
         finally:
             if self.quiet:
@@ -99,3 +123,14 @@ class DeephavenServer:
     def is_running(self) -> bool:
         """Check if server is running."""
         return self._started
+
+    @property
+    def actual_port(self) -> int:
+        """Get the actual port the server is running on.
+
+        This may differ from the requested port if port 0 was used
+        (OS assigns an available port).
+        """
+        if self._server is None:
+            return self.port
+        return self._server.port
