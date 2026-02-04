@@ -1,11 +1,77 @@
 """Tests for Phase 4: Code executor with output capture.
 
-NOTE: These tests require a running Deephaven server.
+NOTE: Integration tests require a running Deephaven server.
 """
 import pytest
 from deephaven_cli.server import DeephavenServer
 from deephaven_cli.client import DeephavenClient
-from deephaven_cli.repl.executor import CodeExecutor, ExecutionResult
+from deephaven_cli.repl.executor import CodeExecutor, ExecutionResult, get_assigned_names
+
+
+class TestGetAssignedNames:
+    """Unit tests for AST-based assignment detection."""
+
+    def test_simple_assignment(self):
+        """Test simple variable assignment."""
+        assert get_assigned_names("t = 1") == {"t"}
+
+    def test_multiple_assignments(self):
+        """Test multiple assignments on separate lines."""
+        assert get_assigned_names("a = 1\nb = 2") == {"a", "b"}
+
+    def test_tuple_unpacking(self):
+        """Test tuple unpacking assignment."""
+        assert get_assigned_names("a, b = 1, 2") == {"a", "b"}
+
+    def test_list_unpacking(self):
+        """Test list unpacking assignment."""
+        assert get_assigned_names("[a, b] = [1, 2]") == {"a", "b"}
+
+    def test_annotated_assignment(self):
+        """Test annotated assignment."""
+        assert get_assigned_names("x: int = 5") == {"x"}
+
+    def test_augmented_assignment(self):
+        """Test augmented assignment (+=, etc)."""
+        assert get_assigned_names("x += 1") == {"x"}
+
+    def test_walrus_operator(self):
+        """Test walrus operator (:=)."""
+        assert get_assigned_names("print(x := 5)") == {"x"}
+
+    def test_chained_assignment(self):
+        """Test chained assignment."""
+        assert get_assigned_names("a = b = 1") == {"a", "b"}
+
+    def test_expression_no_assignment(self):
+        """Test expression without assignment returns empty set."""
+        assert get_assigned_names("1 + 1") == set()
+        assert get_assigned_names("print('hello')") == set()
+
+    def test_function_call_no_assignment(self):
+        """Test function call without assignment."""
+        assert get_assigned_names("empty_table(5).update(['a = 1'])") == set()
+
+    def test_attribute_assignment_ignored(self):
+        """Test attribute assignments are ignored."""
+        assert get_assigned_names("obj.attr = 1") == set()
+
+    def test_subscript_assignment_ignored(self):
+        """Test subscript assignments are ignored."""
+        assert get_assigned_names("obj[0] = 1") == set()
+
+    def test_syntax_error_returns_empty(self):
+        """Test syntax error returns empty set."""
+        assert get_assigned_names("def broken(") == set()
+
+    def test_nested_tuple_unpacking(self):
+        """Test nested tuple unpacking."""
+        assert get_assigned_names("(a, (b, c)) = (1, (2, 3))") == {"a", "b", "c"}
+
+    def test_table_assignment_pattern(self):
+        """Test typical Deephaven table assignment pattern."""
+        code = "t = empty_table(100).update(['a = i'])"
+        assert get_assigned_names(code) == {"t"}
 
 
 @pytest.fixture(scope="module")
@@ -62,12 +128,12 @@ class TestCodeExecutor:
         assert "error msg" in result.stderr
 
     def test_execute_creates_table_detected(self, executor):
-        """Test new tables are detected."""
+        """Test assigned tables are detected."""
         result = executor.execute('''
 from deephaven import empty_table
 executor_test_table = empty_table(3).update(["X = i"])
 ''')
-        assert "executor_test_table" in result.new_tables
+        assert "executor_test_table" in result.assigned_tables
         assert result.error is None
 
     def test_execute_division_error(self, executor):
@@ -131,3 +197,45 @@ preview_test_table = empty_table(3).update(["Value = i * 10"])
         """Test preview of nonexistent table returns error message."""
         preview = executor.get_table_preview("nonexistent_table_xyz")
         assert "error" in preview.lower() or isinstance(preview, str)
+
+    def test_table_reassignment_detected(self, executor):
+        """Test that reassigning a table variable is detected.
+
+        This is a regression test for the issue where:
+        - t = empty_table(5).update(["a = 1"]) would show the table
+        - t = empty_table(5).update(["a = 2"]) would NOT show the table
+
+        The fix uses AST parsing to detect assigned variables rather than
+        only checking for new table names.
+        """
+        # First assignment - should detect 't'
+        result1 = executor.execute('''
+from deephaven import empty_table
+reassign_test_t = empty_table(5).update(["a = 1"])
+''')
+        assert "reassign_test_t" in result1.assigned_tables
+        assert result1.error is None
+
+        # Second assignment to SAME variable - should still detect 't'
+        result2 = executor.execute('''
+reassign_test_t = empty_table(5).update(["a = 2"])
+''')
+        assert "reassign_test_t" in result2.assigned_tables
+        assert result2.error is None
+
+    def test_multiple_table_assignments(self, executor):
+        """Test multiple table assignments in one execution."""
+        result = executor.execute('''
+from deephaven import empty_table
+multi_t1 = empty_table(3).update(["x = 1"])
+multi_t2 = empty_table(3).update(["y = 2"])
+''')
+        assert "multi_t1" in result.assigned_tables
+        assert "multi_t2" in result.assigned_tables
+        assert result.error is None
+
+    def test_non_table_assignment_not_in_assigned_tables(self, executor):
+        """Test that non-table variable assignments are not in assigned_tables."""
+        result = executor.execute("non_table_var = 42")
+        assert "non_table_var" not in result.assigned_tables
+        assert result.error is None

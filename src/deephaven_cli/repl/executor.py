@@ -1,6 +1,7 @@
 """Code execution with output capture using pickle for safe string transfer."""
 from __future__ import annotations
 
+import ast
 import base64
 import pickle
 import textwrap
@@ -11,6 +12,53 @@ if TYPE_CHECKING:
     from deephaven_cli.client import DeephavenClient
 
 
+def get_assigned_names(code: str) -> set[str]:
+    """Extract variable names being assigned in the code.
+
+    Handles:
+    - Simple assignments: t = ...
+    - Tuple unpacking: a, b = ...
+    - Annotated assignments: t: Table = ...
+    - Augmented assignments: t += ...
+    - Walrus operator: (t := ...)
+    """
+    try:
+        tree = ast.parse(code)
+    except SyntaxError:
+        return set()
+
+    names: set[str] = set()
+
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Assign):
+            # Handle: t = ... or a, b = ...
+            for target in node.targets:
+                names.update(_extract_names_from_target(target))
+        elif isinstance(node, ast.AnnAssign) and node.target:
+            # Handle: t: Table = ...
+            names.update(_extract_names_from_target(node.target))
+        elif isinstance(node, ast.AugAssign):
+            # Handle: t += ...
+            names.update(_extract_names_from_target(node.target))
+        elif isinstance(node, ast.NamedExpr):
+            # Handle: (t := ...)
+            names.add(node.target.id)
+
+    return names
+
+
+def _extract_names_from_target(target: ast.expr) -> set[str]:
+    """Extract variable names from an assignment target."""
+    names: set[str] = set()
+    if isinstance(target, ast.Name):
+        names.add(target.id)
+    elif isinstance(target, (ast.Tuple, ast.List)):
+        for elt in target.elts:
+            names.update(_extract_names_from_target(elt))
+    # Ignore attribute assignments (obj.attr = ...) and subscripts (obj[key] = ...)
+    return names
+
+
 @dataclass
 class ExecutionResult:
     """Result of code execution."""
@@ -19,7 +67,7 @@ class ExecutionResult:
     result_repr: str | None  # repr() of expression result, if any
     error: str | None  # Exception traceback, if any
     new_tables: list[str]  # Tables created by this execution
-    updated_tables: list[str]  # Tables modified by this execution
+    assigned_tables: list[str]  # Tables assigned in this execution (new or reassigned)
 
 
 class CodeExecutor:
@@ -30,6 +78,9 @@ class CodeExecutor:
 
     def execute(self, code: str) -> ExecutionResult:
         """Execute code and return captured output."""
+        # Parse code to find assigned variable names
+        assigned_names = get_assigned_names(code)
+
         # Get tables before execution
         tables_before = set(self.client.tables)
 
@@ -49,7 +100,7 @@ class CodeExecutor:
                 result_repr=None,
                 error=str(e),
                 new_tables=[],
-                updated_tables=[],
+                assigned_tables=[],
             )
 
         # Read the result from the table
@@ -62,13 +113,17 @@ class CodeExecutor:
         tables_after = set(self.client.tables) - {"__dh_result_table"}
         new_tables = list(tables_after - tables_before)
 
+        # Find assigned variables that are now tables on the server
+        # This catches both new assignments and reassignments
+        assigned_tables = [name for name in assigned_names if name in tables_after]
+
         return ExecutionResult(
             stdout=result.get("stdout", ""),
             stderr=result.get("stderr", ""),
             result_repr=result.get("result_repr"),
             error=result.get("error"),
             new_tables=new_tables,
-            updated_tables=[],
+            assigned_tables=assigned_tables,
         )
 
     def _build_wrapper(self, code: str) -> str:

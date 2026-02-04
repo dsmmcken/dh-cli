@@ -354,9 +354,9 @@ def run_exec(
                 if result.result_repr is not None and result.result_repr != "None":
                     print(result.result_repr)
 
-                # Show new tables if requested
-                if show_tables and result.new_tables:
-                    for table_name in result.new_tables:
+                # Show assigned tables if requested (covers new and reassigned)
+                if show_tables and result.assigned_tables:
+                    for table_name in result.assigned_tables:
                         print(f"\n=== Table: {table_name} ===")
                         try:
                             preview = executor.get_table_preview(table_name)

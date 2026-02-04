@@ -82,8 +82,8 @@ class DeephavenConsole:
         if result.result_repr is not None and result.result_repr != "None":
             print(result.result_repr)
 
-        # Display new tables
-        for table_name in result.new_tables:
+        # Display assigned tables (covers both new and reassigned tables)
+        for table_name in result.assigned_tables:
             print(f"\nTable '{table_name}':")
             try:
                 preview = self.executor.get_table_preview(table_name)
