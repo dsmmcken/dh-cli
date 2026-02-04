@@ -267,7 +267,7 @@ except NameError:
                 lines.append("(empty table)")
             else:
                 preview_df = arrow_table.slice(0, rows).to_pandas()
-                lines.append(preview_df.to_string())
+                lines.append(preview_df.to_string(index=False))
 
             return "\n".join(lines), meta
 

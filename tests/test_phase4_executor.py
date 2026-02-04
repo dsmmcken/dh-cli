@@ -246,3 +246,67 @@ multi_t2 = empty_table(3).update(["y = 2"])
         result = executor.execute("non_table_var = 42")
         assert "non_table_var" not in result.assigned_tables
         assert result.error is None
+
+    def test_get_table_preview_no_row_index(self, executor):
+        """Test table preview does NOT include pandas row index."""
+        executor.execute('''
+from deephaven import empty_table
+no_index_table = empty_table(3).update(["X = i", "Y = i * 2"])
+''')
+        preview, meta = executor.get_table_preview("no_index_table")
+        lines = preview.strip().split('\n')
+
+        # Find the data section (after "Columns:" and empty line)
+        data_lines = []
+        in_data = False
+        for line in lines:
+            if line.strip() == '':
+                in_data = True
+                continue
+            if in_data:
+                data_lines.append(line)
+
+        # Data lines should NOT start with row indices (0, 1, 2)
+        # The first data line should start with actual data values
+        assert len(data_lines) >= 1
+        # With index=False, lines start with spaces then values, not "0  "
+        first_data = data_lines[0].lstrip()
+        assert not first_data.startswith('0 ')
+
+    def test_get_table_preview_empty_table_no_index(self, executor):
+        """Test preview of empty table displays correctly."""
+        executor.execute('''
+from deephaven import empty_table
+empty_table_test = empty_table(0).update(["A = i"])
+''')
+        preview, meta = executor.get_table_preview("empty_table_test")
+        assert "(empty table)" in preview
+        assert meta.row_count == 0
+
+    def test_get_table_preview_single_row_no_index(self, executor):
+        """Test preview of single-row table has no index."""
+        executor.execute('''
+from deephaven import empty_table
+single_row_test = empty_table(1).update(["Val = 42"])
+''')
+        preview, meta = executor.get_table_preview("single_row_test")
+        assert "42" in preview
+        # Should NOT have "0" as a row index before the value
+        lines = preview.split('\n')
+        data_line = [l for l in lines if '42' in l][0]
+        # The line should not start with "0" followed by spaces
+        assert not data_line.lstrip().startswith('0 ')
+
+    def test_get_table_preview_alignment_preserved(self, executor):
+        """Test column alignment is preserved without index."""
+        executor.execute('''
+from deephaven import empty_table
+align_test = empty_table(3).update(["Short = i", "LongerColumnName = i * 100"])
+''')
+        preview, meta = executor.get_table_preview("align_test")
+        # Both column names should appear
+        assert "Short" in preview
+        assert "LongerColumnName" in preview
+        # Values should be present
+        assert "0" in preview
+        assert "200" in preview
