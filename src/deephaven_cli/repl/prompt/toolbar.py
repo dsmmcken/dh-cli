@@ -21,7 +21,7 @@ def create_toolbar(client: DeephavenClient, port: int) -> Callable[[], HTML]:
             mem_mb = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024
             return HTML(
                 f"<b>Connected</b> | Port: {port} | Tables: {table_count} | "
-                f"Mem: {mem_mb:.0f}MB | <i>Ctrl+R: search | Ctrl+L: clear</i>"
+                f"Mem: {mem_mb:.0f}MB | <i>Ctrl+R: search</i>"
             )
         except Exception:
             return HTML("<ansired><b>Disconnected</b></ansired>")

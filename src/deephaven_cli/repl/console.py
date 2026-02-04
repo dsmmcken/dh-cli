@@ -40,6 +40,11 @@ class DeephavenConsole:
                 if text.strip() in ("exit()", "quit()"):
                     break
 
+                if text.strip() == "clear":
+                    import os
+                    os.system("clear")
+                    continue
+
                 if text.strip():
                     self._execute_and_display(text)
 

@@ -81,6 +81,30 @@ class TestNeedsMoreInputUnit:
         assert console._needs_more_input('x = """hello') is True
 
 
+class TestSpecialCommands:
+    """Unit tests for special command handling (no server needed)."""
+
+    @pytest.fixture
+    def console(self):
+        """Create console with mocked client."""
+        mock_client = MagicMock()
+        return DeephavenConsole(mock_client)
+
+    def test_clear_command_clears_screen(self, console):
+        """Typing 'clear' calls os.system('clear')."""
+        with patch.object(console._session, "prompt", side_effect=["clear", "exit()"]):
+            with patch("os.system") as mock_system:
+                console.interact()
+                mock_system.assert_called_with("clear")
+
+    def test_clear_command_with_whitespace(self, console):
+        """'clear' with surrounding whitespace still works."""
+        with patch.object(console._session, "prompt", side_effect=["  clear  ", "exit()"]):
+            with patch("os.system") as mock_system:
+                console.interact()
+                mock_system.assert_called_with("clear")
+
+
 @pytest.mark.integration
 class TestConsoleExecuteAndDisplay:
     """Integration tests for console execution (requires server)."""
