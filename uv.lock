@@ -95,6 +95,8 @@ name = "deephaven-cli"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
+    { name = "deephaven-plugin-plotly" },
+    { name = "deephaven-plugin-ui" },
     { name = "deephaven-server" },
     { name = "prompt-toolkit" },
     { name = "pydeephaven" },
@@ -109,6 +111,8 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "deephaven-plugin-plotly", specifier = ">=0.2.0" },
+    { name = "deephaven-plugin-ui", specifier = ">=0.32.1" },
     { name = "deephaven-server", specifier = ">=0.37.0" },
     { name = "prompt-toolkit", specifier = ">=3.0.0" },
     { name = "pydeephaven", specifier = ">=0.37.0" },
@@ -146,6 +150,48 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/3a/f7/daf94930569a8f1cba6fe43ea8a8bab9dc51a497c993d33caefaa2afea54/deephaven-plugin-0.6.0.tar.gz", hash = "sha256:07c6e16501e82cf8b92766f3f0d58fbc626317b3a29e3217dfe7428a2ab75629", size = 8418, upload-time = "2023-12-13T17:19:47.74Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/32/f2/c9a1053ba678fbfa0aa6398c68e674d3bfb3df16be1265054e6e8b149267/deephaven_plugin-0.6.0-py3-none-any.whl", hash = "sha256:2bcf31557f47f6c9d773b7f49c0396c327cc5e413c25c17ffd2cb3373d6dae32", size = 9493, upload-time = "2023-12-13T17:19:46.162Z" },
+]
+
+[[package]]
+name = "deephaven-plugin-plotly"
+version = "0.2.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "deephaven-plugin" },
+    { name = "plotly" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/fd/65/a7f0d99aa0ecf9d2dc16cf8fa0d43ac4dd4026825e5130b67d5abc9fffdc/deephaven-plugin-plotly-0.2.0.tar.gz", hash = "sha256:b1bd5faada8512c9e48f2c25265b2993bac5ab829f17109b51f8a05ac2a1c5af", size = 7587, upload-time = "2023-08-10T20:58:15.108Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/eb/19/5361852b833afaec8b75969e5f175e014ff14050ca84526c9612e173f787/deephaven_plugin_plotly-0.2.0-py3-none-any.whl", hash = "sha256:80318feedadfa94cb53e5e2846cb2b5700e275642c5a4ed40a85f8b7de037cab", size = 8472, upload-time = "2023-08-10T20:58:13.529Z" },
+]
+
+[[package]]
+name = "deephaven-plugin-ui"
+version = "0.32.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "deephaven-core" },
+    { name = "deephaven-plugin" },
+    { name = "deephaven-plugin-utilities" },
+    { name = "json-rpc" },
+    { name = "puremagic" },
+    { name = "pyjsonpatch" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/b8/f3/2166c1fa443916033c0ff02a61b537c19bb5bfac9df81d0f72ee00a3bbd0/deephaven_plugin_ui-0.32.1.tar.gz", hash = "sha256:1b01fdda1fa5a55a752bd94ec635556df25bd6e78034f85d49d4228257cf3c58", size = 1034442, upload-time = "2025-09-03T18:31:03.348Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/ae/a8/da6f0731ef00bd976d942ea47ee029e312e15d8c226adb989ce3690f4697/deephaven_plugin_ui-0.32.1-py3-none-any.whl", hash = "sha256:dea609f8f438d4e3f73d5736527dca587e0227d8057e0e9595b1e9d2f9be7e3c", size = 1154057, upload-time = "2025-09-03T18:31:01.891Z" },
+]
+
+[[package]]
+name = "deephaven-plugin-utilities"
+version = "0.0.2"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "deephaven-plugin" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/c3/1a/cd83ca57e01a7e0f0f0b30f5f185aec877a6b7197a3373c45d12be275040/deephaven_plugin_utilities-0.0.2.tar.gz", hash = "sha256:64fa190b0b222733660725982979607e9d68675b3b72e08ef55dfa48dcfa277b", size = 7494, upload-time = "2024-09-16T18:22:52.99Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/ec/16/c730c9d3874693df35af03c462591ae4f89b827ab680064ceffa1f4ff681/deephaven_plugin_utilities-0.0.2-py3-none-any.whl", hash = "sha256:d6a25c8226253e37e7350b37755534ca7c8f9ef59451a4be19845274aeabef92", size = 8380, upload-time = "2024-09-16T18:22:51.745Z" },
 ]
 
 [[package]]
@@ -254,6 +300,24 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/3d/8c/fa9a4c210aad7b5c6cb56254bf7699f44853de49efbca74fdc84f070f03d/jpy-1.3.0-cp314-cp314t-manylinux_2_34_aarch64.whl", hash = "sha256:523a9829c04a6f01c73991c75a3c4d328331190d5e07216e2328ddb83cbb5a15", size = 351369, upload-time = "2025-11-13T17:14:39.505Z" },
     { url = "https://files.pythonhosted.org/packages/d6/e7/39e1d70419a16cbc335929a24451fddb4c69691d7a43d982efdad37b1f67/jpy-1.3.0-cp314-cp314t-manylinux_2_34_x86_64.whl", hash = "sha256:cb7c785bc61ad1ee799f461fcf8590889d40d15166dcdfc6c5e5685e7f97e872", size = 349539, upload-time = "2025-11-13T17:14:40.62Z" },
     { url = "https://files.pythonhosted.org/packages/b9/f9/608067014c05ae7a5b1da053395c005e3728f6fd04abf071dc31e49bc04d/jpy-1.3.0-cp314-cp314t-win_amd64.whl", hash = "sha256:c5c9274b9284ccb863725b2d0a98cb0962f26471222dbb1aa01b14715a577407", size = 82970, upload-time = "2025-11-13T17:14:41.903Z" },
+]
+
+[[package]]
+name = "json-rpc"
+version = "1.15.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/6d/9e/59f4a5b7855ced7346ebf40a2e9a8942863f644378d956f68bcef2c88b90/json-rpc-1.15.0.tar.gz", hash = "sha256:e6441d56c1dcd54241c937d0a2dcd193bdf0bdc539b5316524713f554b7f85b9", size = 28854, upload-time = "2023-06-11T09:45:49.078Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/94/9e/820c4b086ad01ba7d77369fb8b11470a01fac9b4977f02e18659cf378b6b/json_rpc-1.15.0-py2.py3-none-any.whl", hash = "sha256:4a4668bbbe7116feb4abbd0f54e64a4adcf4b8f648f19ffa0848ad0f6606a9bf", size = 39450, upload-time = "2023-06-11T09:45:47.136Z" },
+]
+
+[[package]]
+name = "narwhals"
+version = "2.16.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/fc/6f/713be67779028d482c6e0f2dde5bc430021b2578a4808c1c9f6d7ad48257/narwhals-2.16.0.tar.gz", hash = "sha256:155bb45132b370941ba0396d123cf9ed192bf25f39c4cea726f2da422ca4e145", size = 618268, upload-time = "2026-02-02T10:31:00.545Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/03/cc/7cb74758e6df95e0c4e1253f203b6dd7f348bf2f29cf89e9210a2416d535/narwhals-2.16.0-py3-none-any.whl", hash = "sha256:846f1fd7093ac69d63526e50732033e86c30ea0026a44d9b23991010c7d1485d", size = 443951, upload-time = "2026-02-02T10:30:58.635Z" },
 ]
 
 [[package]]
@@ -369,6 +433,19 @@ wheels = [
 ]
 
 [[package]]
+name = "plotly"
+version = "6.5.2"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "narwhals" },
+    { name = "packaging" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/e3/4f/8a10a9b9f5192cb6fdef62f1d77fa7d834190b2c50c0cd256bd62879212b/plotly-6.5.2.tar.gz", hash = "sha256:7478555be0198562d1435dee4c308268187553cc15516a2f4dd034453699e393", size = 7015695, upload-time = "2026-01-14T21:26:51.222Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/8a/67/f95b5460f127840310d2187f916cf0023b5875c0717fdf893f71e1325e87/plotly-6.5.2-py3-none-any.whl", hash = "sha256:91757653bd9c550eeea2fa2404dba6b85d1e366d54804c340b2c874e5a7eb4a4", size = 9895973, upload-time = "2026-01-14T21:26:47.135Z" },
+]
+
+[[package]]
 name = "pluggy"
 version = "1.6.0"
 source = { registry = "https://pypi.org/simple" }
@@ -402,6 +479,15 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/c5/f5/65d838092fd01c44d16037953fd4c2cc851e783de9b8f02b27ec4ffd906f/protobuf-6.33.5-cp39-abi3-manylinux2014_s390x.whl", hash = "sha256:8afa18e1d6d20af15b417e728e9f60f3aa108ee76f23c3b2c07a2c3b546d3afd", size = 339411, upload-time = "2026-01-29T21:51:27.446Z" },
     { url = "https://files.pythonhosted.org/packages/9b/53/a9443aa3ca9ba8724fdfa02dd1887c1bcd8e89556b715cfbacca6b63dbec/protobuf-6.33.5-cp39-abi3-manylinux2014_x86_64.whl", hash = "sha256:cbf16ba3350fb7b889fca858fb215967792dc125b35c7976ca4818bee3521cf0", size = 323465, upload-time = "2026-01-29T21:51:28.925Z" },
     { url = "https://files.pythonhosted.org/packages/57/bf/2086963c69bdac3d7cff1cc7ff79b8ce5ea0bec6797a017e1be338a46248/protobuf-6.33.5-py3-none-any.whl", hash = "sha256:69915a973dd0f60f31a08b8318b73eab2bd6a392c79184b3612226b0a3f8ec02", size = 170687, upload-time = "2026-01-29T21:51:32.557Z" },
+]
+
+[[package]]
+name = "puremagic"
+version = "1.30"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/dd/7f/9998706bc516bdd664ccf929a1da6c6e5ee06e48f723ce45aae7cf3ff36e/puremagic-1.30.tar.gz", hash = "sha256:f9ff7ac157d54e9cf3bff1addfd97233548e75e685282d84ae11e7ffee1614c9", size = 314785, upload-time = "2025-07-04T18:48:36.061Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/91/ed/1e347d85d05b37a8b9a039ca832e5747e1e5248d0bd66042783ef48b4a37/puremagic-1.30-py3-none-any.whl", hash = "sha256:5eeeb2dd86f335b9cfe8e205346612197af3500c6872dffebf26929f56e9d3c1", size = 43304, upload-time = "2025-07-04T18:48:34.801Z" },
 ]
 
 [[package]]
@@ -463,6 +549,15 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/b0/77/a5b8c569bf593b0140bde72ea885a803b82086995367bf2037de0159d924/pygments-2.19.2.tar.gz", hash = "sha256:636cb2477cec7f8952536970bc533bc43743542f70392ae026374600add5b887", size = 4968631, upload-time = "2025-06-21T13:39:12.283Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/c7/21/705964c7812476f378728bdf590ca4b771ec72385c533964653c68e86bdc/pygments-2.19.2-py3-none-any.whl", hash = "sha256:86540386c03d588bb81d44bc3928634ff26449851e99741617ecb9037ee5ec0b", size = 1225217, upload-time = "2025-06-21T13:39:07.939Z" },
+]
+
+[[package]]
+name = "pyjsonpatch"
+version = "0.1.3"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/d5/f7/73c66854ceb178ecc8d87003c0a384b2d8e7665aa542a210d32affe917d0/pyjsonpatch-0.1.3.tar.gz", hash = "sha256:0273fe6984fbfe7628d58f86e63c602c0a816e7c112a479970f3828928c573e1", size = 15275, upload-time = "2025-02-25T02:34:30.094Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/94/6b/47bd557d73d81731557f37ff5a95fdcca72371723d556a19a133c07167e6/pyjsonpatch-0.1.3-py3-none-any.whl", hash = "sha256:23de20db16308db5df0fb70f5beaf9e86af74f7b1dacdf89580a74f2d080b54d", size = 14077, upload-time = "2025-02-25T02:34:28.85Z" },
 ]
 
 [[package]]
