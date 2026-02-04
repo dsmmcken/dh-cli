@@ -6,6 +6,8 @@ requires-python = ">=3.13"
 dependencies = [
     "deephaven-server>=0.37.0",
     "pydeephaven>=0.37.0",
+    "prompt_toolkit>=3.0.0",
+    "pygments>=2.0.0",
 ]
 
 [project.optional-dependencies]

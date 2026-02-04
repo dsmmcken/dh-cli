@@ -74,6 +74,11 @@ def main() -> int:
         action="store_true",
         help="Show startup messages (default: quiet)",
     )
+    repl_parser.add_argument(
+        "--vi",
+        action="store_true",
+        help="Use Vi key bindings (default: Emacs)",
+    )
 
     # exec subcommand (agent-friendly batch mode)
     exec_parser = subparsers.add_parser(
@@ -176,7 +181,7 @@ def main() -> int:
         return EXIT_SUCCESS
 
     if args.command == "repl":
-        return run_repl(args.port, args.jvm_args, args.verbose)
+        return run_repl(args.port, args.jvm_args, args.verbose, args.vi)
     elif args.command == "exec":
         return run_exec(
             args.script,
@@ -192,7 +197,9 @@ def main() -> int:
     return EXIT_SUCCESS
 
 
-def run_repl(port: int, jvm_args: list[str], verbose: bool = False) -> int:
+def run_repl(
+    port: int, jvm_args: list[str], verbose: bool = False, vi_mode: bool = False
+) -> int:
     """Run the interactive REPL."""
     from deephaven_cli.server import DeephavenServer
     from deephaven_cli.client import DeephavenClient
@@ -213,7 +220,7 @@ def run_repl(port: int, jvm_args: list[str], verbose: bool = False) -> int:
                     print("Deephaven REPL")
                     print("Type 'exit()' or press Ctrl+D to quit.\n")
 
-                console = DeephavenConsole(client)
+                console = DeephavenConsole(client, port=port, vi_mode=vi_mode)
                 console.interact()
 
     except KeyboardInterrupt:

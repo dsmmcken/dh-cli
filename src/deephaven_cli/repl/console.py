@@ -1,24 +1,30 @@
 """Interactive REPL console for Deephaven."""
 from __future__ import annotations
 
-import code
 import sys
 from typing import TYPE_CHECKING
+
+from deephaven_cli.repl.prompt import create_prompt_session
 
 if TYPE_CHECKING:
     from deephaven_cli.client import DeephavenClient
     from deephaven_cli.repl.executor import CodeExecutor
+    from prompt_toolkit import PromptSession
 
 
 class DeephavenConsole:
     """Interactive console that executes code on Deephaven server."""
 
-    def __init__(self, client: DeephavenClient):
+    def __init__(
+        self, client: DeephavenClient, port: int = 10000, *, vi_mode: bool = False
+    ):
         from deephaven_cli.repl.executor import CodeExecutor
 
         self.client = client
         self.executor = CodeExecutor(client)
-        self._buffer: list[str] = []
+        self._session: PromptSession = create_prompt_session(
+            client, port, vi_mode=vi_mode
+        )
 
     def interact(self, banner: str | None = None) -> None:
         """Start the interactive REPL loop."""
@@ -27,47 +33,24 @@ class DeephavenConsole:
 
         while True:
             try:
-                # Get prompt based on buffer state
-                prompt = "... " if self._buffer else ">>> "
-                line = input(prompt)
+                # prompt_toolkit handles multi-line, history, suggestions
+                text = self._session.prompt(">>> ")
 
                 # Handle special commands
-                if not self._buffer and line.strip() in ("exit()", "quit()"):
+                if text.strip() in ("exit()", "quit()"):
                     break
 
-                self._buffer.append(line)
-                source = "\n".join(self._buffer)
-
-                # Check if we need more input
-                if self._needs_more_input(source):
-                    continue
-
-                # Execute the complete source
-                self._execute_and_display(source)
-                self._buffer.clear()
+                if text.strip():
+                    self._execute_and_display(text)
 
             except EOFError:
                 print()
                 break
             except KeyboardInterrupt:
                 print("\nKeyboardInterrupt")
-                self._buffer.clear()
+                continue
 
         print("Goodbye!")
-
-    def _needs_more_input(self, source: str) -> bool:
-        """Check if the source code is incomplete (needs more lines)."""
-        # compile_command returns:
-        # - Code object if complete and valid
-        # - None if incomplete (needs more input)
-        # - Raises exception if invalid syntax
-        try:
-            result = code.compile_command(source, "<input>", "exec")
-            # None means incomplete, needs more input
-            return result is None
-        except (OverflowError, SyntaxError, ValueError):
-            # Syntax error - don't ask for more input, let it fail on execute
-            return False
 
     def _execute_and_display(self, source: str) -> None:
         """Execute code and display results."""
