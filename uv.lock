@@ -95,7 +95,7 @@ name = "deephaven-cli"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
-    { name = "deephaven-plugin-plotly" },
+    { name = "deephaven-plugin-plotly-express" },
     { name = "deephaven-plugin-ui" },
     { name = "deephaven-server" },
     { name = "prompt-toolkit" },
@@ -111,7 +111,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "deephaven-plugin-plotly", specifier = ">=0.2.0" },
+    { name = "deephaven-plugin-plotly-express", specifier = ">=0.18.0" },
     { name = "deephaven-plugin-ui", specifier = ">=0.32.1" },
     { name = "deephaven-server", specifier = ">=0.37.0" },
     { name = "prompt-toolkit", specifier = ">=3.0.0" },
@@ -153,16 +153,19 @@ wheels = [
 ]
 
 [[package]]
-name = "deephaven-plugin-plotly"
-version = "0.2.0"
+name = "deephaven-plugin-plotly-express"
+version = "0.18.3"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
+    { name = "deephaven-core" },
     { name = "deephaven-plugin" },
+    { name = "deephaven-plugin-utilities" },
+    { name = "jpy" },
     { name = "plotly" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/fd/65/a7f0d99aa0ecf9d2dc16cf8fa0d43ac4dd4026825e5130b67d5abc9fffdc/deephaven-plugin-plotly-0.2.0.tar.gz", hash = "sha256:b1bd5faada8512c9e48f2c25265b2993bac5ab829f17109b51f8a05ac2a1c5af", size = 7587, upload-time = "2023-08-10T20:58:15.108Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/d3/d0/5ba8f1a53b7152c4d1549dcadf74947b8c7c24b01716e46e7b3eb9b17902/deephaven_plugin_plotly_express-0.18.3.tar.gz", hash = "sha256:6a5575480a8d56c0ef4bcc3827deacbb65ddf05dc7378826f902626baa15c4d2", size = 1868829, upload-time = "2026-01-15T13:55:28.308Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/eb/19/5361852b833afaec8b75969e5f175e014ff14050ca84526c9612e173f787/deephaven_plugin_plotly-0.2.0-py3-none-any.whl", hash = "sha256:80318feedadfa94cb53e5e2846cb2b5700e275642c5a4ed40a85f8b7de037cab", size = 8472, upload-time = "2023-08-10T20:58:13.529Z" },
+    { url = "https://files.pythonhosted.org/packages/4d/6b/a49d3a71acbb881463576d9fa1284f521317a6ebff34b564bd7c8d25aa43/deephaven_plugin_plotly_express-0.18.3-py3-none-any.whl", hash = "sha256:534887b8040007759ec0c7f25d68c1e0000aba03a49aad61bb5448929252510d", size = 1929637, upload-time = "2026-01-15T13:55:27.054Z" },
 ]
 
 [[package]]

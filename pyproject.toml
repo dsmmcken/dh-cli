@@ -9,7 +9,7 @@ dependencies = [
     "prompt_toolkit>=3.0.0",
     "pygments>=2.0.0",
     "deephaven-plugin-ui>=0.32.1",
-    "deephaven-plugin-plotly>=0.2.0",
+    "deephaven-plugin-plotly-express>=0.18.0",
 ]
 
 [project.optional-dependencies]
