@@ -135,6 +135,11 @@ def main() -> int:
         action="store_true",
         help="Show preview of newly created tables",
     )
+    exec_parser.add_argument(
+        "--no-table-meta",
+        action="store_true",
+        help="Suppress column types and row count in table output",
+    )
 
     # app subcommand (long-running application mode)
     app_parser = subparsers.add_parser(
@@ -190,6 +195,7 @@ def main() -> int:
             args.verbose,
             args.timeout,
             args.show_tables,
+            args.no_table_meta,
         )
     elif args.command == "app":
         return run_app(args.script, args.port, args.jvm_args, args.verbose)
@@ -281,6 +287,7 @@ def run_exec(
     verbose: bool,
     timeout: int | None,
     show_tables: bool,
+    no_table_meta: bool = False,
 ) -> int:
     """Execute a script in batch mode (agent-friendly)."""
     from deephaven_cli.server import DeephavenServer
@@ -358,13 +365,18 @@ def run_exec(
 
                 # Show assigned tables if requested (covers new and reassigned)
                 if show_tables and result.assigned_tables:
+                    show_meta = not no_table_meta
                     for table_name in result.assigned_tables:
-                        print(f"\n=== Table: {table_name} ===")
-                        try:
-                            preview = executor.get_table_preview(table_name)
-                            print(preview)
-                        except Exception as e:
-                            print(f"(could not preview: {e})")
+                        preview, meta = executor.get_table_preview(
+                            table_name,
+                            show_meta=show_meta,
+                        )
+                        if meta is not None and not no_table_meta:
+                            status = "refreshing" if meta.is_refreshing else "static"
+                            print(f"\n=== Table: {table_name} ({meta.row_count:,} rows, {status}) ===")
+                        else:
+                            print(f"\n=== Table: {table_name} ===")
+                        print(preview)
 
                 # Check for errors
                 if result.error:

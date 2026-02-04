@@ -84,9 +84,10 @@ class DeephavenConsole:
 
         # Display assigned tables (covers both new and reassigned tables)
         for table_name in result.assigned_tables:
-            print(f"\nTable '{table_name}':")
-            try:
-                preview = self.executor.get_table_preview(table_name)
-                print(preview)
-            except Exception as e:
-                print(f"  (could not preview: {e})")
+            preview, meta = self.executor.get_table_preview(table_name)
+            if meta is not None:
+                status = "refreshing" if meta.is_refreshing else "static"
+                print(f"\n=== Table: {table_name} ({meta.row_count:,} rows, {status}) ===")
+            else:
+                print(f"\n=== Table: {table_name} ===")
+            print(preview)

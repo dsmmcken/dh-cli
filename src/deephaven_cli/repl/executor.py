@@ -60,6 +60,14 @@ def _extract_names_from_target(target: ast.expr) -> set[str]:
 
 
 @dataclass
+class TableMeta:
+    """Metadata about a table."""
+    row_count: int
+    is_refreshing: bool
+    columns: list[tuple[str, str]]  # (name, type) pairs
+
+
+@dataclass
 class ExecutionResult:
     """Result of code execution."""
     stdout: str
@@ -210,12 +218,58 @@ except NameError:
         except Exception:
             pass
 
-    def get_table_preview(self, table_name: str, rows: int = 10) -> str:
-        """Get a string preview of a table."""
+    def get_table_preview(
+        self,
+        table_name: str,
+        rows: int = 10,
+        show_meta: bool = True,
+    ) -> tuple[str, TableMeta | None]:
+        """Get a string preview of a table.
+
+        Args:
+            table_name: Name of the table to preview
+            rows: Number of rows to show (default: 10)
+            show_meta: Include column types in output (default: True)
+
+        Returns:
+            Tuple of (preview_string, TableMeta or None on error)
+        """
         session = self.client.session
         try:
             table = session.open_table(table_name)
-            preview = table.head(rows).to_arrow().to_pandas()
-            return preview.to_string()
+            arrow_table = table.to_arrow()
+
+            # Get metadata
+            total_rows = arrow_table.num_rows
+            is_refreshing = table.is_refreshing
+            schema = arrow_table.schema
+            columns = [(field.name, str(field.type)) for field in schema]
+
+            meta = TableMeta(total_rows, is_refreshing, columns)
+
+            # Build output
+            lines = []
+
+            if show_meta:
+                # Format column types
+                col_info = ", ".join(f"{name} ({typ})" for name, typ in columns)
+                if len(f"Columns: {col_info}") > 80:
+                    # Use row format for many columns
+                    lines.append("Columns:")
+                    for name, typ in columns:
+                        lines.append(f"  {name} ({typ})")
+                else:
+                    lines.append(f"Columns: {col_info}")
+                lines.append("")
+
+            # Data preview
+            if total_rows == 0:
+                lines.append("(empty table)")
+            else:
+                preview_df = arrow_table.slice(0, rows).to_pandas()
+                lines.append(preview_df.to_string())
+
+            return "\n".join(lines), meta
+
         except Exception as e:
-            return f"(error previewing table: {e})"
+            return f"(error previewing table: {e})", None

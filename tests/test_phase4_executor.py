@@ -182,21 +182,28 @@ print(add(5, 3))
         assert "quotes" in result.stdout
 
     def test_get_table_preview(self, executor):
-        """Test table preview returns string with data."""
+        """Test table preview returns string with data and metadata."""
         # First create a table
         executor.execute('''
 from deephaven import empty_table
 preview_test_table = empty_table(3).update(["Value = i * 10"])
 ''')
-        preview = executor.get_table_preview("preview_test_table")
+        preview, meta = executor.get_table_preview("preview_test_table")
         assert isinstance(preview, str)
         assert "Value" in preview  # Column name
         assert "0" in preview  # First value
+        # Check metadata
+        assert meta is not None
+        assert meta.row_count == 3
+        assert meta.is_refreshing is False
+        assert len(meta.columns) == 1
+        assert meta.columns[0][0] == "Value"
 
     def test_get_table_preview_nonexistent(self, executor):
         """Test preview of nonexistent table returns error message."""
-        preview = executor.get_table_preview("nonexistent_table_xyz")
+        preview, meta = executor.get_table_preview("nonexistent_table_xyz")
         assert "error" in preview.lower() or isinstance(preview, str)
+        assert meta is None
 
     def test_table_reassignment_detected(self, executor):
         """Test that reassigning a table variable is detected.
