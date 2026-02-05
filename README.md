@@ -100,6 +100,43 @@ The server stays running after script execution, allowing you to:
 | 3 | Timeout |
 | 130 | Interrupted (Ctrl+C) |
 
+## Special Characters in Piped Input
+
+Deephaven query strings use backticks (`` ` ``) for string literals:
+
+```python
+# In a .py file - works correctly
+stocks.where('Sym = `DOG`')
+```
+
+When piping scripts to `dh exec -`, the shell interprets backticks as command substitution **before** the data reaches dh-cli.
+
+### Recommended Solutions
+
+**1. Use a script file (most reliable):**
+```bash
+dh exec my_script.py
+```
+
+**2. Use ANSI-C quoting with `\n` for multiline:**
+```bash
+echo $'from deephaven.plot import express as dx\nstocks = dx.data.stocks()\ndog = stocks.where(\'Sym = `DOG`\')' | dh exec --show-tables -
+```
+
+**3. Escape backticks in double quotes:**
+```bash
+echo "from deephaven import empty_table; t = empty_table(1).update([\"S = \`hello\`\"])" | dh exec --show-tables -
+```
+
+**4. Use printf for complex multiline:**
+```bash
+printf '%s\n' \
+  'from deephaven.plot import express as dx' \
+  'stocks = dx.data.stocks()' \
+  'dog = stocks.where('\''Sym = `DOG`'\'')' \
+  | dh exec --show-tables -
+```
+
 ## Examples
 
 ### Quick One-Liner

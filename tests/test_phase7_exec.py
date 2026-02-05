@@ -199,3 +199,117 @@ print(f"5! = {factorial(5)}")
             timeout=120,
         )
         assert result.returncode == 0
+
+
+@pytest.mark.integration
+class TestExecBackticks:
+    """Tests for backtick handling in piped input."""
+
+    def test_exec_backticks_from_file(self):
+        """Test backticks work correctly from file (no shell interpretation)."""
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False) as f:
+            f.write('from deephaven import empty_table\n')
+            f.write('t = empty_table(1).update(["S = `hello`"])\n')
+            f.flush()
+            try:
+                result = subprocess.run(
+                    ["dh", "exec", f.name, "--show-tables"],
+                    capture_output=True,
+                    text=True,
+                    timeout=120,
+                )
+                assert result.returncode == 0
+                assert "hello" in result.stdout
+            finally:
+                os.unlink(f.name)
+
+    def test_exec_backticks_escaped_double_quotes(self):
+        """Test escaped backticks in double quotes work."""
+        result = subprocess.run(
+            ["bash", "-c", r'echo "from deephaven import empty_table; t = empty_table(1).update([\"S = \`hi\`\"])" | dh exec --show-tables -'],
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+        assert result.returncode == 0
+        assert "hi" in result.stdout
+
+    def test_exec_backticks_ansi_c_quoting(self):
+        """Test $'...' ANSI-C quoting preserves backticks."""
+        result = subprocess.run(
+            ["bash", "-c", r"echo $'from deephaven import empty_table\nt = empty_table(1).update([\"S = `test`\"])' | dh exec --show-tables -"],
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+        assert result.returncode == 0
+        assert "test" in result.stdout
+
+    def test_exec_empty_backtick_string(self):
+        """Test empty string literal with backticks."""
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False) as f:
+            f.write('from deephaven import empty_table\n')
+            f.write('t = empty_table(1).update(["S = ``"])\n')
+            f.flush()
+            try:
+                result = subprocess.run(
+                    ["dh", "exec", f.name, "--show-tables"],
+                    capture_output=True,
+                    text=True,
+                    timeout=120,
+                )
+                assert result.returncode == 0
+            finally:
+                os.unlink(f.name)
+
+    def test_exec_multiple_backtick_pairs(self):
+        """Test multiple backtick pairs in same script."""
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False) as f:
+            f.write('from deephaven import empty_table\n')
+            f.write('t = empty_table(1).update(["A = `one`", "B = `two`", "C = `three`"])\n')
+            f.flush()
+            try:
+                result = subprocess.run(
+                    ["dh", "exec", f.name, "--show-tables"],
+                    capture_output=True,
+                    text=True,
+                    timeout=120,
+                )
+                assert result.returncode == 0
+                assert "one" in result.stdout
+                assert "two" in result.stdout
+                assert "three" in result.stdout
+            finally:
+                os.unlink(f.name)
+
+    def test_exec_backticks_in_output(self):
+        """Test output containing backticks is preserved."""
+        result = subprocess.run(
+            ["dh", "exec", "-"],
+            input="print('has `backticks` inside')",
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+        assert result.returncode == 0
+        assert "`backticks`" in result.stdout
+
+    def test_exec_backticks_with_special_chars(self):
+        """Test backticks with other special characters."""
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False) as f:
+            f.write('from deephaven import empty_table\n')
+            f.write('t = empty_table(1).update(["S = `hello world`"])\n')
+            f.write('print("Testing single and double quotes")\n')
+            f.flush()
+            try:
+                result = subprocess.run(
+                    ["dh", "exec", f.name],
+                    capture_output=True,
+                    text=True,
+                    timeout=120,
+                )
+                assert result.returncode == 0
+                assert "single" in result.stdout
+                assert "double" in result.stdout
+            finally:
+                os.unlink(f.name)

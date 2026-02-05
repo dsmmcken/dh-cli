@@ -14,6 +14,28 @@ EXIT_CONNECTION_ERROR = 2
 EXIT_TIMEOUT = 3
 EXIT_INTERRUPTED = 130
 
+
+def _suggest_backtick_hint(script_content: str, error: str) -> str | None:
+    """Check if error might be caused by shell backtick interpretation.
+
+    When piping scripts via shell, backticks get interpreted as command
+    substitution before reaching dh-cli. This heuristic detects likely cases.
+    """
+    # Patterns that suggest Deephaven query operations
+    query_patterns = ['.where(', '.update(', '.select(', '.view(', '.update_view(']
+    has_query_ops = any(p in script_content for p in query_patterns)
+    has_backticks = '`' in script_content
+    is_syntax_error = 'SyntaxError' in error or 'NameError' in error
+
+    if has_query_ops and not has_backticks and is_syntax_error:
+        return (
+            "\nHint: If your script contains backticks (`) for Deephaven strings,\n"
+            "they may have been interpreted by the shell. Use a script file\n"
+            "or $'...' quoting. See 'dh exec --help' for details."
+        )
+    return None
+
+
 DESCRIPTION = """\
 Deephaven CLI - Command-line tool for Deephaven servers
 
@@ -99,7 +121,14 @@ def main() -> int:
                "  dh exec script.py\n"
                "  dh exec script.py -v --timeout 60\n"
                "  echo \"print('hi')\" | dh exec -\n"
-               "  dh exec script.py --show-tables",
+               "  dh exec script.py --show-tables\n\n"
+               "Backticks in piped input:\n"
+               "  Deephaven uses backticks for string literals in queries.\n"
+               "  Shell interprets backticks as command substitution.\n"
+               "  Solutions:\n"
+               "    1. Use a script file: dh exec script.py\n"
+               "    2. Use $'...' quoting: echo $'t.where(\"X = `val`\")' | dh exec -\n"
+               "    3. Escape backticks: echo \"t.where('X = \\`val\\`')\" | dh exec -",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     exec_parser.add_argument(
@@ -381,6 +410,10 @@ def run_exec(
                 # Check for errors
                 if result.error:
                     print(result.error, file=sys.stderr)
+                    # Check if error might be due to shell backtick interpretation
+                    hint = _suggest_backtick_hint(script_content, result.error)
+                    if hint:
+                        print(hint, file=sys.stderr)
                     return EXIT_SCRIPT_ERROR
 
                 return EXIT_SUCCESS
