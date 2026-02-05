@@ -313,3 +313,159 @@ class TestExecBackticks:
                 assert "double" in result.stdout
             finally:
                 os.unlink(f.name)
+
+
+@pytest.mark.integration
+class TestExecCommandFlag:
+    """Tests for dh exec -c flag (inline code execution)."""
+
+    def test_exec_c_simple_print(self):
+        """Test -c with simple print statement."""
+        result = subprocess.run(
+            ["dh", "exec", "-c", "print('hello from -c')"],
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+        assert result.returncode == 0
+        assert "hello from -c" in result.stdout
+
+    def test_exec_c_expression(self):
+        """Test -c with expression result."""
+        result = subprocess.run(
+            ["dh", "exec", "-c", "42 + 8"],
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+        assert result.returncode == 0
+        assert "50" in result.stdout
+
+    def test_exec_c_with_semicolons(self):
+        """Test -c with multiple statements separated by semicolons."""
+        result = subprocess.run(
+            ["dh", "exec", "-c", "x = 5; y = 10; print(x + y)"],
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+        assert result.returncode == 0
+        assert "15" in result.stdout
+
+    def test_exec_c_deephaven_table(self):
+        """Test -c with Deephaven table creation."""
+        result = subprocess.run(
+            ["dh", "exec", "-c", "from deephaven import empty_table; t = empty_table(5)", "--show-tables"],
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+        assert result.returncode == 0
+        assert "t" in result.stdout
+
+    def test_exec_c_with_show_tables(self):
+        """Test -c combined with --show-tables flag."""
+        result = subprocess.run(
+            ["dh", "exec", "-c", "from deephaven import empty_table; my_table = empty_table(3).update(['X = i'])", "--show-tables"],
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+        assert result.returncode == 0
+        assert "my_table" in result.stdout
+        assert "X" in result.stdout
+
+    def test_exec_c_with_timeout(self):
+        """Test -c combined with --timeout flag."""
+        result = subprocess.run(
+            ["dh", "exec", "-c", "print('quick')", "--timeout=60"],
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+        assert result.returncode == 0
+        assert "quick" in result.stdout
+
+    def test_exec_c_error_returns_exit_code_1(self):
+        """Test -c with error returns exit code 1."""
+        result = subprocess.run(
+            ["dh", "exec", "-c", "raise RuntimeError('test error')"],
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+        assert result.returncode == 1
+        assert "RuntimeError" in result.stderr
+        assert "test error" in result.stderr
+
+    def test_exec_c_and_script_error(self):
+        """Test using both -c and script file returns error."""
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False) as f:
+            f.write('print("from file")\n')
+            f.flush()
+            try:
+                result = subprocess.run(
+                    ["dh", "exec", "-c", "print('from -c')", f.name],
+                    capture_output=True,
+                    text=True,
+                    timeout=120,
+                )
+                assert result.returncode == 2
+                assert "Cannot use both" in result.stderr
+            finally:
+                os.unlink(f.name)
+
+    def test_exec_no_input_error(self):
+        """Test exec with no -c and no script returns error."""
+        result = subprocess.run(
+            ["dh", "exec"],
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+        assert result.returncode == 2
+        assert "Must provide" in result.stderr
+
+    def test_dh_c_shorthand(self):
+        """Test dh -c shorthand (without exec subcommand)."""
+        result = subprocess.run(
+            ["dh", "-c", "print('shorthand works')"],
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+        assert result.returncode == 0
+        assert "shorthand works" in result.stdout
+
+    def test_dh_c_shorthand_with_flags(self):
+        """Test dh -c shorthand with additional flags."""
+        result = subprocess.run(
+            ["dh", "-c", "from deephaven import empty_table; t = empty_table(2)", "--show-tables"],
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+        assert result.returncode == 0
+        assert "t" in result.stdout
+
+    def test_exec_c_empty_string(self):
+        """Test -c with empty string is a no-op success."""
+        result = subprocess.run(
+            ["dh", "exec", "-c", ""],
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+        assert result.returncode == 0
+
+    def test_exec_c_multiline_via_newlines(self):
+        """Test -c with actual newlines in the code string."""
+        code = "def add(a, b):\n    return a + b\nprint(add(3, 4))"
+        result = subprocess.run(
+            ["dh", "exec", "-c", code],
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+        assert result.returncode == 0
+        assert "7" in result.stdout

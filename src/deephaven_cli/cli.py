@@ -47,6 +47,8 @@ EPILOG = """\
 Examples:
   dh repl                              Start interactive session
   dh exec script.py                    Run script and exit
+  dh exec -c $'print("hello")'         Execute inline code
+  dh -c $'from deephaven import *'     Shorthand for exec -c
   dh exec script.py -v --timeout 30    Verbose mode with timeout
   cat script.py | dh exec -            Read from stdin
   dh app dashboard.py                  Long-running server
@@ -57,6 +59,10 @@ Use 'dh <command> --help' for more details.
 
 def main() -> int:
     """Main entry point."""
+    # Handle shorthand: dh -c "code" -> dh exec -c "code"
+    if len(sys.argv) >= 2 and sys.argv[1] == "-c":
+        sys.argv.insert(1, "exec")
+
     parser = argparse.ArgumentParser(
         prog="dh",
         description=DESCRIPTION,
@@ -119,20 +125,28 @@ def main() -> int:
                "  130 Interrupted\n\n"
                "Examples:\n"
                "  dh exec script.py\n"
+               "  dh exec -c $'print(\"hello\")'\n"
+               "  dh -c $'from deephaven import empty_table\\nt = empty_table(5)'\n"
                "  dh exec script.py -v --timeout 60\n"
-               "  echo \"print('hi')\" | dh exec -\n"
                "  dh exec script.py --show-tables\n\n"
-               "Backticks in piped input:\n"
-               "  Deephaven uses backticks for string literals in queries.\n"
-               "  Shell interprets backticks as command substitution.\n"
-               "  Solutions:\n"
-               "    1. Use a script file: dh exec script.py\n"
-               "    2. Use $'...' quoting: echo $'t.where(\"X = `val`\")' | dh exec -\n"
-               "    3. Escape backticks: echo \"t.where('X = \\`val\\`')\" | dh exec -",
+               "Using -c with ANSI-C quoting ($'...'):\n"
+               "  Always use $'...' quoting with -c to avoid shell issues:\n"
+               "  - Backticks work: dh -c $'t.where(\"X = `val`\")'\n"
+               "  - Newlines work:  dh -c $'x = 1\\nprint(x)'\n"
+               "  - Quotes work:    dh -c $'print(\"hello\")'\n\n"
+               "Stdin input:\n"
+               "  echo $'print(\"hi\")' | dh exec -",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     exec_parser.add_argument(
+        "-c",
+        dest="code",
+        metavar="CODE",
+        help="Execute CODE as a Python string (use $'...' quoting)",
+    )
+    exec_parser.add_argument(
         "script",
+        nargs="?",
         help="Python script to execute (use '-' for stdin)",
     )
     exec_parser.add_argument(
@@ -218,13 +232,14 @@ def main() -> int:
         return run_repl(args.port, args.jvm_args, args.verbose, args.vi)
     elif args.command == "exec":
         return run_exec(
-            args.script,
-            args.port,
-            args.jvm_args,
-            args.verbose,
-            args.timeout,
-            args.show_tables,
-            args.no_table_meta,
+            script_path=args.script,
+            code=args.code,
+            port=args.port,
+            jvm_args=args.jvm_args,
+            verbose=args.verbose,
+            timeout=args.timeout,
+            show_tables=args.show_tables,
+            no_table_meta=args.no_table_meta,
         )
     elif args.command == "app":
         return run_app(args.script, args.port, args.jvm_args, args.verbose)
@@ -310,7 +325,8 @@ def run_repl(
 
 
 def run_exec(
-    script_path: str,
+    script_path: str | None,
+    code: str | None,
     port: int,
     jvm_args: list[str],
     verbose: bool,
@@ -323,19 +339,29 @@ def run_exec(
     from deephaven_cli.client import DeephavenClient
     from deephaven_cli.repl.executor import CodeExecutor
 
-    # Read the script
-    try:
-        if script_path == "-":
-            script_content = sys.stdin.read()
-        else:
-            with open(script_path, "r") as f:
-                script_content = f.read()
-    except FileNotFoundError:
-        print(f"Error: Script file not found: {script_path}", file=sys.stderr)
+    # Determine code source: -c argument, file, or stdin
+    if code is not None and script_path is not None:
+        print("Error: Cannot use both -c and a script file", file=sys.stderr)
         return EXIT_CONNECTION_ERROR
-    except Exception as e:
-        print(f"Error reading script: {e}", file=sys.stderr)
+    elif code is not None:
+        script_content = code
+    elif script_path is None:
+        print("Error: Must provide either -c CODE or a script file", file=sys.stderr)
         return EXIT_CONNECTION_ERROR
+    else:
+        # Read from file or stdin
+        try:
+            if script_path == "-":
+                script_content = sys.stdin.read()
+            else:
+                with open(script_path, "r") as f:
+                    script_content = f.read()
+        except FileNotFoundError:
+            print(f"Error: Script file not found: {script_path}", file=sys.stderr)
+            return EXIT_CONNECTION_ERROR
+        except Exception as e:
+            print(f"Error reading script: {e}", file=sys.stderr)
+            return EXIT_CONNECTION_ERROR
 
     if not script_content.strip():
         # Empty script is a no-op success
