@@ -140,14 +140,14 @@ sys.stderr.write("to stderr\\n")
         # Note: stderr message may not be captured due to os._exit in thread
         # The important thing is the correct exit code
 
-    def test_exec_show_tables(self):
-        """Test --show-tables displays table preview."""
+    def test_exec_shows_tables_by_default(self):
+        """Test tables are shown by default (no flag needed)."""
         code = '''
 from deephaven import empty_table
 show_tables_test = empty_table(3).update(["X = i"])
 '''
         result = subprocess.run(
-            ["dh", "exec", "-", "--show-tables"],
+            ["dh", "exec", "-"],
             input=code,
             capture_output=True,
             text=True,
@@ -156,6 +156,23 @@ show_tables_test = empty_table(3).update(["X = i"])
         assert result.returncode == 0
         assert "show_tables_test" in result.stdout
         assert "X" in result.stdout  # Column name
+
+    def test_exec_no_show_tables(self):
+        """Test --no-show-tables suppresses table preview."""
+        code = '''
+from deephaven import empty_table
+hidden_table = empty_table(3).update(["X = i"])
+'''
+        result = subprocess.run(
+            ["dh", "exec", "-", "--no-show-tables"],
+            input=code,
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+        assert result.returncode == 0
+        assert "hidden_table" not in result.stdout
+        assert "=== Table:" not in result.stdout
 
     def test_exec_multiline_script(self):
         """Test multiline script execution."""
@@ -213,7 +230,7 @@ class TestExecBackticks:
             f.flush()
             try:
                 result = subprocess.run(
-                    ["dh", "exec", f.name, "--show-tables"],
+                    ["dh", "exec", f.name],
                     capture_output=True,
                     text=True,
                     timeout=120,
@@ -226,7 +243,7 @@ class TestExecBackticks:
     def test_exec_backticks_escaped_double_quotes(self):
         """Test escaped backticks in double quotes work."""
         result = subprocess.run(
-            ["bash", "-c", r'echo "from deephaven import empty_table; t = empty_table(1).update([\"S = \`hi\`\"])" | dh exec --show-tables -'],
+            ["bash", "-c", r'echo "from deephaven import empty_table; t = empty_table(1).update([\"S = \`hi\`\"])" | dh exec -'],
             capture_output=True,
             text=True,
             timeout=120,
@@ -237,7 +254,7 @@ class TestExecBackticks:
     def test_exec_backticks_ansi_c_quoting(self):
         """Test $'...' ANSI-C quoting preserves backticks."""
         result = subprocess.run(
-            ["bash", "-c", r"echo $'from deephaven import empty_table\nt = empty_table(1).update([\"S = `test`\"])' | dh exec --show-tables -"],
+            ["bash", "-c", r"echo $'from deephaven import empty_table\nt = empty_table(1).update([\"S = `test`\"])' | dh exec -"],
             capture_output=True,
             text=True,
             timeout=120,
@@ -253,7 +270,7 @@ class TestExecBackticks:
             f.flush()
             try:
                 result = subprocess.run(
-                    ["dh", "exec", f.name, "--show-tables"],
+                    ["dh", "exec", f.name],
                     capture_output=True,
                     text=True,
                     timeout=120,
@@ -270,7 +287,7 @@ class TestExecBackticks:
             f.flush()
             try:
                 result = subprocess.run(
-                    ["dh", "exec", f.name, "--show-tables"],
+                    ["dh", "exec", f.name],
                     capture_output=True,
                     text=True,
                     timeout=120,
@@ -353,27 +370,27 @@ class TestExecCommandFlag:
         assert "15" in result.stdout
 
     def test_exec_c_deephaven_table(self):
-        """Test -c with Deephaven table creation."""
+        """Test -c with Deephaven table creation (tables shown by default)."""
         result = subprocess.run(
-            ["dh", "exec", "-c", "from deephaven import empty_table; t = empty_table(5)", "--show-tables"],
+            ["dh", "exec", "-c", "from deephaven import empty_table; t = empty_table(5)"],
             capture_output=True,
             text=True,
             timeout=120,
         )
         assert result.returncode == 0
-        assert "t" in result.stdout
+        assert "=== Table: t" in result.stdout
 
-    def test_exec_c_with_show_tables(self):
-        """Test -c combined with --show-tables flag."""
+    def test_exec_c_with_no_show_tables(self):
+        """Test -c combined with --no-show-tables flag."""
         result = subprocess.run(
-            ["dh", "exec", "-c", "from deephaven import empty_table; my_table = empty_table(3).update(['X = i'])", "--show-tables"],
+            ["dh", "exec", "-c", "from deephaven import empty_table; my_table = empty_table(3).update(['X = i'])", "--no-show-tables"],
             capture_output=True,
             text=True,
             timeout=120,
         )
         assert result.returncode == 0
-        assert "my_table" in result.stdout
-        assert "X" in result.stdout
+        assert "my_table" not in result.stdout
+        assert "=== Table:" not in result.stdout
 
     def test_exec_c_with_timeout(self):
         """Test -c combined with --timeout flag."""
@@ -438,15 +455,15 @@ class TestExecCommandFlag:
         assert "shorthand works" in result.stdout
 
     def test_dh_c_shorthand_with_flags(self):
-        """Test dh -c shorthand with additional flags."""
+        """Test dh -c shorthand with additional flags (tables shown by default)."""
         result = subprocess.run(
-            ["dh", "-c", "from deephaven import empty_table; t = empty_table(2)", "--show-tables"],
+            ["dh", "-c", "from deephaven import empty_table; t = empty_table(2)"],
             capture_output=True,
             text=True,
             timeout=120,
         )
         assert result.returncode == 0
-        assert "t" in result.stdout
+        assert "=== Table: t" in result.stdout
 
     def test_exec_c_empty_string(self):
         """Test -c with empty string is a no-op success."""

@@ -128,7 +128,7 @@ def main() -> int:
                "  dh exec -c $'print(\"hello\")'\n"
                "  dh -c $'from deephaven import empty_table\\nt = empty_table(5)'\n"
                "  dh exec script.py -v --timeout 60\n"
-               "  dh exec script.py --show-tables\n\n"
+               "  dh exec script.py --no-show-tables\n\n"
                "Using -c with ANSI-C quoting ($'...'):\n"
                "  Always use $'...' quoting with -c to avoid shell issues:\n"
                "  - Backticks work: dh -c $'t.where(\"X = `val`\")'\n"
@@ -174,9 +174,9 @@ def main() -> int:
         help="Max execution time in seconds (exit code 3 on timeout)",
     )
     exec_parser.add_argument(
-        "--show-tables",
+        "--no-show-tables",
         action="store_true",
-        help="Show preview of newly created tables",
+        help="Suppress table preview output after execution",
     )
     exec_parser.add_argument(
         "--no-table-meta",
@@ -238,7 +238,7 @@ def main() -> int:
             jvm_args=args.jvm_args,
             verbose=args.verbose,
             timeout=args.timeout,
-            show_tables=args.show_tables,
+            show_tables=not args.no_show_tables,
             no_table_meta=args.no_table_meta,
         )
     elif args.command == "app":
