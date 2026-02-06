@@ -146,6 +146,8 @@ Examples:
   dh exec script.py -v --timeout 30    Verbose mode with timeout
   cat script.py | dh exec -            Read from stdin
   dh serve dashboard.py                 Long-running server
+  dh list                              Show running servers
+  dh kill 10000                        Stop server on port
 
 Use 'dh <command> --help' for more details.
 """
@@ -330,6 +332,32 @@ def main() -> int:
         help="Don't open browser automatically",
     )
 
+    # list subcommand
+    subparsers.add_parser(
+        "list",
+        help="List running Deephaven servers",
+        description="Discover and list all running Deephaven servers on this machine.\n\n"
+                    "Finds servers started via dh-cli, Docker, or standalone Java.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+
+    # kill subcommand
+    kill_parser = subparsers.add_parser(
+        "kill",
+        help="Stop a running Deephaven server",
+        description="Stop a Deephaven server by port number.\n\n"
+                    "Works with dh-cli processes (SIGTERM) and Docker containers (docker stop).",
+        epilog="Examples:\n"
+               "  dh kill 10000\n"
+               "  dh kill 8080",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    kill_parser.add_argument(
+        "port",
+        type=int,
+        help="Port of the server to stop",
+    )
+
     args = parser.parse_args()
 
     if args.command is None:
@@ -360,6 +388,10 @@ def main() -> int:
         )
     elif args.command == "serve":
         return run_serve(args.script, args.port, args.jvm_args, args.verbose, args.no_browser)
+    elif args.command == "list":
+        return run_list()
+    elif args.command == "kill":
+        return run_kill(args.port)
 
     return EXIT_SUCCESS
 
@@ -650,6 +682,28 @@ def run_exec(
     finally:
         if timer:
             timer.cancel()
+
+
+def run_list() -> int:
+    """List all running Deephaven servers."""
+    from deephaven_cli.discovery import discover_servers, format_server_list
+
+    servers = discover_servers()
+    print(format_server_list(servers))
+    return EXIT_SUCCESS
+
+
+def run_kill(port: int) -> int:
+    """Kill a Deephaven server by port."""
+    from deephaven_cli.discovery import kill_server
+
+    success, message = kill_server(port)
+    if success:
+        print(message)
+        return EXIT_SUCCESS
+    else:
+        print(message, file=sys.stderr)
+        return EXIT_CONNECTION_ERROR
 
 
 def run_serve(script_path: str, port: int, jvm_args: list[str], verbose: bool = False, no_browser: bool = False) -> int:

@@ -100,6 +100,22 @@ The server stays running after script execution, allowing you to:
 - Keep data pipelines running
 - Serve real-time dashboards
 
+### List Running Servers
+
+```bash
+dh list                          # Show all running Deephaven servers
+```
+
+Discovers servers started via `dh serve`, `dh repl`, Docker, or standalone Java.
+
+### Stop a Server
+
+```bash
+dh kill 10000                    # Stop server on port 10000
+```
+
+Works with dh-cli processes (sends SIGTERM) and Docker containers (`docker stop`).
+
 ### Remote Server Connections
 
 Connect to an existing Deephaven server instead of starting an embedded one:
