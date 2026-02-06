@@ -15,7 +15,10 @@ This CLI (`dh`) provides a simple way to run Deephaven scripts from your termina
 
 - **Interactive REPL** - Python shell with Deephaven context, tab completion, and automatic table display
 - **Batch execution** - Run scripts and exit with clean stdout/stderr separation (ideal for automation and AI agents)
-- **Application mode** - Run scripts with a persistent server for dashboards and long-running services
+- **Inline code** - Execute one-liners with `dh -c $'print("hello")'`
+- **Serve mode** - Run scripts with a persistent server for dashboards and long-running services (auto-opens browser)
+- **Remote connections** - Connect to existing Deephaven servers with `--host`, including auth and TLS support
+- **Automatic table preview** - Tables created during execution are displayed by default
 - **Quiet by default** - JVM and server startup messages suppressed for clean output
 
 ## Requirements
@@ -42,10 +45,12 @@ pip install -e .
 ### Interactive REPL
 
 ```bash
-dh repl                       # Start interactive session (quiet by default)
-dh repl -v                    # Verbose mode with startup messages
-dh repl --port 8080           # Custom port
-dh repl --jvm-args -Xmx8g     # Custom JVM memory
+dh repl                              # Start interactive session (quiet by default)
+dh repl -v                           # Verbose mode with startup messages
+dh repl --port 8080                  # Custom port
+dh repl --jvm-args -Xmx8g           # Custom JVM memory
+dh repl --vi                         # Vi key bindings (default: Emacs)
+dh repl --host myserver.com          # Connect to remote server
 ```
 
 The REPL provides:
@@ -59,36 +64,78 @@ The REPL provides:
 Best for automation, CI/CD pipelines, and AI agents:
 
 ```bash
-dh exec script.py                    # Run script and exit (quiet by default)
+dh exec script.py                    # Run script and exit (tables shown by default)
 dh exec script.py -v                 # Verbose mode (show startup messages)
 dh exec script.py --timeout 30       # Timeout after 30 seconds
-dh exec script.py --show-tables      # Preview any tables created by the script
+dh exec script.py --no-show-tables   # Suppress table preview output
+dh exec script.py --no-table-meta    # Suppress column types/row count in output
 echo "print(2+2)" | dh exec -        # Read script from stdin
+dh exec --host remote.example.com script.py  # Execute on remote server
 ```
 
-### Application Mode
+### Inline Code Execution
+
+Execute code directly without a script file, similar to `python -c`:
+
+```bash
+dh -c $'print("hello")'                          # Shorthand for dh exec -c
+dh exec -c $'from deephaven import empty_table\nt = empty_table(5)'
+dh -c $'t.where("Sym = \`DOG\`")'                # Backticks work in $'...'
+```
+
+> **Note:** Always use ANSI-C quoting (`$'...'`) with `-c` to avoid shell interpretation issues with backticks and special characters.
+
+### Serve Mode
 
 For dashboards, visualizations, and long-running services:
 
 ```bash
-dh app dashboard.py            # Run script, keep server alive until Ctrl+C
-dh app dashboard.py --port 8080
+dh serve dashboard.py            # Run script, open browser, keep server alive
+dh serve dashboard.py --port 8080
+dh serve dashboard.py --no-browser  # Don't open browser automatically
 ```
 
 The server stays running after script execution, allowing you to:
-- Connect to the web UI at `http://localhost:<port>`
+- View the web UI (opened automatically in your browser)
 - Keep data pipelines running
 - Serve real-time dashboards
+
+### Remote Server Connections
+
+Connect to an existing Deephaven server instead of starting an embedded one:
+
+```bash
+dh repl --host myserver.com                    # Connect to remote server
+dh exec script.py --host myserver.com          # Execute on remote server
+dh repl --host myserver.com --port 8080        # Custom port
+dh repl --host myserver.com --auth-type Basic --auth-token user:pass
+```
+
+Authentication and TLS options are available for remote connections:
+
+| Option | Description |
+|--------|-------------|
+| `--host HOST` | Connect to remote server (skips embedded server) |
+| `--auth-type TYPE` | Authentication type: `Anonymous`, `Basic`, or custom (default: `Anonymous`) |
+| `--auth-token TOKEN` | Auth token (for Basic: `user:password`). Can also use `DH_AUTH_TOKEN` env var |
+| `--tls` | Enable TLS/SSL encryption |
+| `--tls-ca-cert PATH` | Path to CA certificate PEM file |
+| `--tls-client-cert PATH` | Client certificate for mutual TLS |
+| `--tls-client-key PATH` | Client private key for mutual TLS |
 
 ## Common Options
 
 | Option | Description | Default |
 |--------|-------------|---------|
 | `--port` | Server port | 10000 |
-| `--jvm-args` | JVM arguments | `-Xmx4g` |
-| `-v, --verbose` | Show startup messages | off (quiet by default) |
-| `--timeout` | Max execution time (exec only) | none |
-| `--show-tables` | Preview created tables (exec only) | off |
+| `--jvm-args` | JVM arguments (embedded only) | `-Xmx4g` |
+| `-v, --verbose` | Show startup/connection messages | off |
+| `-c CODE` | Execute inline code (exec only) | — |
+| `--timeout` | Max execution time in seconds (exec only) | none |
+| `--no-show-tables` | Suppress table preview (exec only) | tables shown |
+| `--no-table-meta` | Suppress column types/row count (exec only) | metadata shown |
+| `--vi` | Vi key bindings (repl only) | Emacs |
+| `--host` | Connect to remote server | embedded |
 
 ## Exit Codes
 
@@ -100,7 +147,7 @@ The server stays running after script execution, allowing you to:
 | 3 | Timeout |
 | 130 | Interrupted (Ctrl+C) |
 
-## Special Characters in Piped Input
+## Special Characters and Shell Quoting
 
 Deephaven query strings use backticks (`` ` ``) for string literals:
 
@@ -109,32 +156,21 @@ Deephaven query strings use backticks (`` ` ``) for string literals:
 stocks.where('Sym = `DOG`')
 ```
 
-When piping scripts to `dh exec -`, the shell interprets backticks as command substitution **before** the data reaches dh-cli.
-
-### Recommended Solutions
+When passing code via the shell, backticks are interpreted as command substitution. The recommended solutions:
 
 **1. Use a script file (most reliable):**
 ```bash
 dh exec my_script.py
 ```
 
-**2. Use ANSI-C quoting with `\n` for multiline:**
+**2. Use `-c` with ANSI-C quoting (recommended for one-liners):**
 ```bash
-echo $'from deephaven.plot import express as dx\nstocks = dx.data.stocks()\ndog = stocks.where(\'Sym = `DOG`\')' | dh exec --show-tables -
+dh -c $'from deephaven.plot import express as dx\nstocks = dx.data.stocks()\ndog = stocks.where("Sym = \`DOG\`")'
 ```
 
-**3. Escape backticks in double quotes:**
+**3. Pipe with ANSI-C quoting:**
 ```bash
-echo "from deephaven import empty_table; t = empty_table(1).update([\"S = \`hello\`\"])" | dh exec --show-tables -
-```
-
-**4. Use printf for complex multiline:**
-```bash
-printf '%s\n' \
-  'from deephaven.plot import express as dx' \
-  'stocks = dx.data.stocks()' \
-  'dog = stocks.where('\''Sym = `DOG`'\'')' \
-  | dh exec --show-tables -
+echo $'from deephaven.plot import express as dx\nstocks = dx.data.stocks()\ndog = stocks.where("Sym = \`DOG\`")' | dh exec -
 ```
 
 ## Examples
@@ -143,10 +179,10 @@ printf '%s\n' \
 
 ```bash
 # Run a simple expression
-echo "print(2 + 2)" | dh exec -
+dh -c $'print(2 + 2)'
 
-# Create and display a table
-echo "from deephaven import empty_table; t = empty_table(5).update('X = i'); print(t.to_string())" | dh exec -
+# Create and display a table (tables shown by default)
+dh -c $'from deephaven import empty_table\nt = empty_table(5).update("X = i")'
 ```
 
 ### Run a Script File
@@ -194,8 +230,8 @@ print("Dashboard running. Open http://localhost:10000 in your browser.")
 ```
 
 ```bash
-# Keep server alive for web UI access
-dh app dashboard.py
+# Keep server alive for web UI access (opens browser automatically)
+dh serve dashboard.py
 ```
 
 ### Automation with Timeout

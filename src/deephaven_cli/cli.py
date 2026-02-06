@@ -6,6 +6,7 @@ import os
 import sys
 import threading
 import time
+import subprocess as _subprocess
 
 # Exit codes
 EXIT_SUCCESS = 0
@@ -13,6 +14,31 @@ EXIT_SCRIPT_ERROR = 1
 EXIT_CONNECTION_ERROR = 2
 EXIT_TIMEOUT = 3
 EXIT_INTERRUPTED = 130
+
+
+def _is_wsl() -> bool:
+    """Check if running inside WSL."""
+    try:
+        with open("/proc/version", "r") as f:
+            return "microsoft" in f.read().lower()
+    except OSError:
+        return False
+
+
+def _open_browser(url: str) -> None:
+    """Open URL in the default browser, handling WSL."""
+    try:
+        if _is_wsl():
+            _subprocess.Popen(
+                ["cmd.exe", "/c", "start", url],
+                stdout=_subprocess.DEVNULL,
+                stderr=_subprocess.DEVNULL,
+            )
+        else:
+            import webbrowser
+            webbrowser.open(url)
+    except Exception:
+        pass
 
 
 def _suggest_backtick_hint(script_content: str, error: str) -> str | None:
@@ -36,6 +62,73 @@ def _suggest_backtick_hint(script_content: str, error: str) -> str | None:
     return None
 
 
+def _add_connection_args(parser: argparse.ArgumentParser) -> None:
+    """Add common connection arguments to a parser."""
+    conn_group = parser.add_argument_group("connection options")
+    conn_group.add_argument(
+        "--host",
+        help="Connect to remote server (skips embedded server)",
+    )
+    conn_group.add_argument(
+        "--auth-type",
+        default=os.environ.get("DH_AUTH_TYPE", "Anonymous"),
+        help="Authentication type: Anonymous, Basic, or custom (default: Anonymous)",
+    )
+    conn_group.add_argument(
+        "--auth-token",
+        default=os.environ.get("DH_AUTH_TOKEN", ""),
+        help="Auth token (for Basic: 'user:password'). Can use DH_AUTH_TOKEN env var",
+    )
+
+    tls_group = parser.add_argument_group("TLS options")
+    tls_group.add_argument(
+        "--tls",
+        action="store_true",
+        help="Enable TLS/SSL encryption",
+    )
+    tls_group.add_argument(
+        "--tls-ca-cert",
+        help="Path to CA certificate PEM file",
+    )
+    tls_group.add_argument(
+        "--tls-client-cert",
+        help="Path to client certificate PEM file (mutual TLS)",
+    )
+    tls_group.add_argument(
+        "--tls-client-key",
+        help="Path to client private key PEM file (mutual TLS)",
+    )
+
+
+def _read_cert_file(path: str | None) -> bytes | None:
+    """Read a certificate file and return its contents as bytes."""
+    if path is None:
+        return None
+    try:
+        with open(path, "rb") as f:
+            return f.read()
+    except FileNotFoundError:
+        print(f"Error: Certificate file not found: {path}", file=sys.stderr)
+        sys.exit(EXIT_CONNECTION_ERROR)
+    except Exception as e:
+        print(f"Error reading certificate file {path}: {e}", file=sys.stderr)
+        sys.exit(EXIT_CONNECTION_ERROR)
+
+
+def _get_client_kwargs(args: argparse.Namespace) -> dict:
+    """Build client kwargs from parsed arguments."""
+    return {
+        "host": args.host or "localhost",
+        "port": args.port,
+        "auth_type": args.auth_type,
+        "auth_token": args.auth_token,
+        "use_tls": args.tls,
+        "tls_root_certs": _read_cert_file(args.tls_ca_cert),
+        "client_cert_chain": _read_cert_file(args.tls_client_cert),
+        "client_private_key": _read_cert_file(args.tls_client_key),
+    }
+
+
 DESCRIPTION = """\
 Deephaven CLI - Command-line tool for Deephaven servers
 
@@ -46,12 +139,13 @@ real-time data capabilities.
 EPILOG = """\
 Examples:
   dh repl                              Start interactive session
+  dh repl --host myserver.com          Connect to remote server
   dh exec script.py                    Run script and exit
   dh exec -c $'print("hello")'         Execute inline code
   dh -c $'from deephaven import *'     Shorthand for exec -c
   dh exec script.py -v --timeout 30    Verbose mode with timeout
   cat script.py | dh exec -            Read from stdin
-  dh app dashboard.py                  Long-running server
+  dh serve dashboard.py                 Long-running server
 
 Use 'dh <command> --help' for more details.
 """
@@ -77,11 +171,14 @@ def main() -> int:
         help="Start an interactive REPL session",
         description="Interactive Python REPL with Deephaven server context.\n\n"
                     "Provides full Python environment with Deephaven imports,\n"
-                    "tab completion, and direct table manipulation.",
+                    "tab completion, and direct table manipulation.\n\n"
+                    "By default starts an embedded server. Use --host to connect\n"
+                    "to an existing remote server instead.",
         epilog="Examples:\n"
-               "  dh repl\n"
-               "  dh repl --port 8080\n"
-               "  dh repl --jvm-args -Xmx8g",
+               "  dh repl                              Embedded server\n"
+               "  dh repl --host myserver.com          Remote server\n"
+               "  dh repl --host localhost --port 8080 Remote on localhost\n"
+               "  dh repl --jvm-args -Xmx8g            Custom JVM memory",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     repl_parser.add_argument(
@@ -94,19 +191,20 @@ def main() -> int:
         "--jvm-args",
         nargs="*",
         default=["-Xmx4g"],
-        help="JVM arguments (default: %(default)s). Example: -Xmx8g",
+        help="JVM arguments for embedded server (default: %(default)s)",
     )
     repl_parser.add_argument(
         "--verbose",
         "-v",
         action="store_true",
-        help="Show startup messages (default: quiet)",
+        help="Show startup/connection messages",
     )
     repl_parser.add_argument(
         "--vi",
         action="store_true",
         help="Use Vi key bindings (default: Emacs)",
     )
+    _add_connection_args(repl_parser)
 
     # exec subcommand (agent-friendly batch mode)
     exec_parser = subparsers.add_parser(
@@ -116,7 +214,9 @@ def main() -> int:
                     "Best for automation and AI agents:\n"
                     "  - Clean stdout/stderr separation\n"
                     "  - Structured exit codes\n"
-                    "  - Optional timeout",
+                    "  - Optional timeout\n\n"
+                    "By default starts an embedded server. Use --host to connect\n"
+                    "to an existing remote server instead.",
         epilog="Exit codes:\n"
                "  0   Success\n"
                "  1   Script error\n"
@@ -125,6 +225,7 @@ def main() -> int:
                "  130 Interrupted\n\n"
                "Examples:\n"
                "  dh exec script.py\n"
+               "  dh exec script.py --host remote.example.com\n"
                "  dh exec -c $'print(\"hello\")'\n"
                "  dh -c $'from deephaven import empty_table\\nt = empty_table(5)'\n"
                "  dh exec script.py -v --timeout 60\n"
@@ -159,13 +260,13 @@ def main() -> int:
         "--jvm-args",
         nargs="*",
         default=["-Xmx4g"],
-        help="JVM arguments (default: %(default)s). Example: -Xmx8g",
+        help="JVM arguments for embedded server (default: %(default)s)",
     )
     exec_parser.add_argument(
         "--verbose",
         "-v",
         action="store_true",
-        help="Show startup messages (default: quiet)",
+        help="Show startup/connection messages",
     )
     exec_parser.add_argument(
         "--timeout",
@@ -183,43 +284,50 @@ def main() -> int:
         action="store_true",
         help="Suppress column types and row count in table output",
     )
+    _add_connection_args(exec_parser)
 
-    # app subcommand (long-running application mode)
-    app_parser = subparsers.add_parser(
-        "app",
+    # serve subcommand (long-running application mode)
+    serve_parser = subparsers.add_parser(
+        "serve",
         help="Run script and keep server alive (dashboards/services)",
         description="Run a script and keep the Deephaven server running.\n\n"
                     "Use for:\n"
                     "  - Dashboards and visualizations\n"
                     "  - Long-running data pipelines\n"
                     "  - Services that need persistent server\n\n"
-                    "Server runs until Ctrl+C.",
+                    "Opens browser automatically. Server runs until Ctrl+C.",
         epilog="Examples:\n"
-               "  dh app dashboard.py\n"
-               "  dh app dashboard.py --port 8080",
+               "  dh serve dashboard.py\n"
+               "  dh serve dashboard.py --port 8080\n"
+               "  dh serve dashboard.py --no-browser",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    app_parser.add_argument(
+    serve_parser.add_argument(
         "script",
         help="Python script to execute",
     )
-    app_parser.add_argument(
+    serve_parser.add_argument(
         "--port",
         type=int,
         default=10000,
         help="Server port (default: %(default)s)",
     )
-    app_parser.add_argument(
+    serve_parser.add_argument(
         "--jvm-args",
         nargs="*",
         default=["-Xmx4g"],
         help="JVM arguments (default: %(default)s). Example: -Xmx8g",
     )
-    app_parser.add_argument(
+    serve_parser.add_argument(
         "--verbose",
         "-v",
         action="store_true",
         help="Show startup messages (default: quiet)",
+    )
+    serve_parser.add_argument(
+        "--no-browser",
+        action="store_true",
+        help="Don't open browser automatically",
     )
 
     args = parser.parse_args()
@@ -229,7 +337,14 @@ def main() -> int:
         return EXIT_SUCCESS
 
     if args.command == "repl":
-        return run_repl(args.port, args.jvm_args, args.verbose, args.vi)
+        return run_repl(
+            port=args.port,
+            jvm_args=args.jvm_args,
+            verbose=args.verbose,
+            vi_mode=args.vi,
+            host=args.host,
+            client_kwargs=_get_client_kwargs(args) if args.host else None,
+        )
     elif args.command == "exec":
         return run_exec(
             script_path=args.script,
@@ -240,9 +355,11 @@ def main() -> int:
             timeout=args.timeout,
             show_tables=not args.no_show_tables,
             no_table_meta=args.no_table_meta,
+            host=args.host,
+            client_kwargs=_get_client_kwargs(args) if args.host else None,
         )
-    elif args.command == "app":
-        return run_app(args.script, args.port, args.jvm_args, args.verbose)
+    elif args.command == "serve":
+        return run_serve(args.script, args.port, args.jvm_args, args.verbose, args.no_browser)
 
     return EXIT_SUCCESS
 
@@ -260,23 +377,85 @@ while True:
     time.sleep(0.25)
 '''
 
+_CONNECTING_ANIMATION_SCRIPT = '''
+import sys
+import time
+frame = 0
+while True:
+    num_dots = (frame % 3) + 1
+    sys.stdout.write(f"\\rConnecting{'.' * num_dots:<3}")
+    sys.stdout.flush()
+    frame += 1
+    time.sleep(0.25)
+'''
+
 
 def run_repl(
-    port: int, jvm_args: list[str], verbose: bool = False, vi_mode: bool = False
+    port: int,
+    jvm_args: list[str],
+    verbose: bool = False,
+    vi_mode: bool = False,
+    host: str | None = None,
+    client_kwargs: dict | None = None,
 ) -> int:
     """Run the interactive REPL."""
     import subprocess
-    from deephaven_cli.server import DeephavenServer
     from deephaven_cli.client import DeephavenClient
     from deephaven_cli.repl.console import DeephavenConsole
 
     animation_proc = None
 
+    # Remote mode: connect directly to existing server
+    if host:
+        if verbose:
+            print(f"Connecting to {host}:{port}...")
+        else:
+            animation_proc = subprocess.Popen(
+                [sys.executable, "-c", _CONNECTING_ANIMATION_SCRIPT],
+                stdout=sys.stdout,
+                stderr=subprocess.DEVNULL,
+            )
+
+        try:
+            with DeephavenClient(**client_kwargs) as client:
+                if animation_proc:
+                    animation_proc.terminate()
+                    animation_proc.wait(timeout=1.0)
+                    sys.stdout.write("\r" + " " * 25 + "\r")
+                    sys.stdout.flush()
+
+                if verbose:
+                    print(f"Connected to {host}:{port}\n")
+                    print("Deephaven REPL (remote)")
+                    print("Type 'exit()' or press Ctrl+D to quit.\n")
+
+                console = DeephavenConsole(client, port=port, vi_mode=vi_mode)
+                console.interact()
+
+        except KeyboardInterrupt:
+            if animation_proc:
+                animation_proc.terminate()
+                sys.stdout.write("\r" + " " * 25 + "\r")
+                sys.stdout.flush()
+            print("\nInterrupted.")
+            return EXIT_INTERRUPTED
+        except Exception as e:
+            if animation_proc:
+                animation_proc.terminate()
+                sys.stdout.write("\r" + " " * 25 + "\r")
+                sys.stdout.flush()
+            print(f"Error: Failed to connect to {host}:{port}: {e}", file=sys.stderr)
+            return EXIT_CONNECTION_ERROR
+
+        return EXIT_SUCCESS
+
+    # Embedded mode: start server, then connect
+    from deephaven_cli.server import DeephavenServer
+
     if verbose:
         print(f"Starting Deephaven server on port {port}...")
         print("(this may take a moment for JVM initialization)")
     else:
-        # Start animation in a separate process (avoids GIL)
         animation_proc = subprocess.Popen(
             [sys.executable, "-c", _ANIMATION_SCRIPT],
             stdout=sys.stdout,
@@ -290,11 +469,9 @@ def run_repl(
                 print(f"Server started on port {actual_port}. Connecting client...")
 
             with DeephavenClient(port=actual_port) as client:
-                # Stop animation now that we're connected
                 if animation_proc:
                     animation_proc.terminate()
                     animation_proc.wait(timeout=1.0)
-                    # Clear the connecting message
                     sys.stdout.write("\r" + " " * 25 + "\r")
                     sys.stdout.flush()
 
@@ -333,9 +510,10 @@ def run_exec(
     timeout: int | None,
     show_tables: bool,
     no_table_meta: bool = False,
+    host: str | None = None,
+    client_kwargs: dict | None = None,
 ) -> int:
     """Execute a script in batch mode (agent-friendly)."""
-    from deephaven_cli.server import DeephavenServer
     from deephaven_cli.client import DeephavenClient
     from deephaven_cli.repl.executor import CodeExecutor
 
@@ -382,7 +560,73 @@ def run_exec(
         timer.daemon = True
         timer.start()
 
+    def _execute_with_client(client: DeephavenClient) -> int:
+        """Execute script with the given client."""
+        if verbose:
+            print("Executing script...", file=sys.stderr)
+
+        executor = CodeExecutor(client)
+        result = executor.execute(script_content)
+
+        # Cancel timeout now that execution is done
+        if timer:
+            timer.cancel()
+
+        # Output stdout (to stdout)
+        if result.stdout:
+            print(result.stdout, end="")
+            if not result.stdout.endswith("\n"):
+                print()
+
+        # Output stderr (to stderr)
+        if result.stderr:
+            print(result.stderr, file=sys.stderr, end="")
+            if not result.stderr.endswith("\n"):
+                print(file=sys.stderr)
+
+        # Output expression result (to stdout)
+        if result.result_repr is not None and result.result_repr != "None":
+            print(result.result_repr)
+
+        # Show assigned tables if requested (covers new and reassigned)
+        if show_tables and result.assigned_tables:
+            show_meta = not no_table_meta
+            for table_name in result.assigned_tables:
+                preview, meta = executor.get_table_preview(
+                    table_name,
+                    show_meta=show_meta,
+                )
+                if meta is not None and not no_table_meta:
+                    status = "refreshing" if meta.is_refreshing else "static"
+                    print(f"\n=== Table: {table_name} ({meta.row_count:,} rows, {status}) ===")
+                else:
+                    print(f"\n=== Table: {table_name} ===")
+                print(preview)
+
+        # Check for errors
+        if result.error:
+            print(result.error, file=sys.stderr)
+            hint = _suggest_backtick_hint(script_content, result.error)
+            if hint:
+                print(hint, file=sys.stderr)
+            return EXIT_SCRIPT_ERROR
+
+        return EXIT_SUCCESS
+
     try:
+        # Remote mode: connect directly to existing server
+        if host:
+            if verbose:
+                print(f"Connecting to {host}:{port}...", file=sys.stderr)
+
+            with DeephavenClient(**client_kwargs) as client:
+                if verbose:
+                    print(f"Connected to {host}:{port}", file=sys.stderr)
+                return _execute_with_client(client)
+
+        # Embedded mode: start server, then connect
+        from deephaven_cli.server import DeephavenServer
+
         if verbose:
             print(f"Starting Deephaven server on port {port}...", file=sys.stderr)
 
@@ -392,72 +636,25 @@ def run_exec(
                 print(f"Server on port {actual_port}. Connecting client...", file=sys.stderr)
 
             with DeephavenClient(port=actual_port) as client:
-                if verbose:
-                    print("Executing script...", file=sys.stderr)
-
-                executor = CodeExecutor(client)
-                result = executor.execute(script_content)
-
-                # Cancel timeout now that execution is done
-                if timer:
-                    timer.cancel()
-
-                # Output stdout (to stdout)
-                if result.stdout:
-                    print(result.stdout, end="")
-                    if not result.stdout.endswith("\n"):
-                        print()
-
-                # Output stderr (to stderr)
-                if result.stderr:
-                    print(result.stderr, file=sys.stderr, end="")
-                    if not result.stderr.endswith("\n"):
-                        print(file=sys.stderr)
-
-                # Output expression result (to stdout)
-                if result.result_repr is not None and result.result_repr != "None":
-                    print(result.result_repr)
-
-                # Show assigned tables if requested (covers new and reassigned)
-                if show_tables and result.assigned_tables:
-                    show_meta = not no_table_meta
-                    for table_name in result.assigned_tables:
-                        preview, meta = executor.get_table_preview(
-                            table_name,
-                            show_meta=show_meta,
-                        )
-                        if meta is not None and not no_table_meta:
-                            status = "refreshing" if meta.is_refreshing else "static"
-                            print(f"\n=== Table: {table_name} ({meta.row_count:,} rows, {status}) ===")
-                        else:
-                            print(f"\n=== Table: {table_name} ===")
-                        print(preview)
-
-                # Check for errors
-                if result.error:
-                    print(result.error, file=sys.stderr)
-                    # Check if error might be due to shell backtick interpretation
-                    hint = _suggest_backtick_hint(script_content, result.error)
-                    if hint:
-                        print(hint, file=sys.stderr)
-                    return EXIT_SCRIPT_ERROR
-
-                return EXIT_SUCCESS
+                return _execute_with_client(client)
 
     except KeyboardInterrupt:
         print("\nInterrupted.", file=sys.stderr)
         return EXIT_INTERRUPTED
     except Exception as e:
-        print(f"Error: {e}", file=sys.stderr)
+        if host:
+            print(f"Error: Failed to connect to {host}:{port}: {e}", file=sys.stderr)
+        else:
+            print(f"Error: {e}", file=sys.stderr)
         return EXIT_CONNECTION_ERROR
     finally:
-        # Always cancel the timer
         if timer:
             timer.cancel()
 
 
-def run_app(script_path: str, port: int, jvm_args: list[str], verbose: bool = False) -> int:
+def run_serve(script_path: str, port: int, jvm_args: list[str], verbose: bool = False, no_browser: bool = False) -> int:
     """Run a script and keep the server alive until interrupted."""
+    import subprocess
     from deephaven_cli.server import DeephavenServer
     from deephaven_cli.client import DeephavenClient
 
@@ -472,8 +669,16 @@ def run_app(script_path: str, port: int, jvm_args: list[str], verbose: bool = Fa
         print(f"Error reading script: {e}", file=sys.stderr)
         return EXIT_CONNECTION_ERROR
 
+    animation_proc = None
+
     if verbose:
         print(f"Starting Deephaven server on port {port}...", flush=True)
+    else:
+        animation_proc = subprocess.Popen(
+            [sys.executable, "-c", _ANIMATION_SCRIPT],
+            stdout=sys.stdout,
+            stderr=subprocess.DEVNULL,
+        )
 
     try:
         with DeephavenServer(port=port, jvm_args=jvm_args, quiet=not verbose) as server:
@@ -482,6 +687,12 @@ def run_app(script_path: str, port: int, jvm_args: list[str], verbose: bool = Fa
                 print(f"Server started on port {actual_port}", flush=True)
 
             with DeephavenClient(port=actual_port) as client:
+                if animation_proc:
+                    animation_proc.terminate()
+                    animation_proc.wait(timeout=1.0)
+                    sys.stdout.write("\r" + " " * 25 + "\r")
+                    sys.stdout.flush()
+
                 if verbose:
                     print(f"Running {script_path}...", flush=True)
 
@@ -492,8 +703,12 @@ def run_app(script_path: str, port: int, jvm_args: list[str], verbose: bool = Fa
                     print(f"Script error: {e}", file=sys.stderr, flush=True)
                     return EXIT_SCRIPT_ERROR
 
-                if verbose:
-                    print("Script executed. Server running. Press Ctrl+C to stop.", flush=True)
+                url = f"http://localhost:{actual_port}"
+                print(f"Server running at {url}", flush=True)
+                print("Press Ctrl+C to stop.", flush=True)
+
+                if not no_browser:
+                    _open_browser(url)
 
                 # Keep alive until interrupted
                 try:
@@ -503,9 +718,17 @@ def run_app(script_path: str, port: int, jvm_args: list[str], verbose: bool = Fa
                     print("\nShutting down...", flush=True)
 
     except KeyboardInterrupt:
+        if animation_proc:
+            animation_proc.terminate()
+            sys.stdout.write("\r" + " " * 25 + "\r")
+            sys.stdout.flush()
         print("\nInterrupted.", flush=True)
         return EXIT_INTERRUPTED
     except Exception as e:
+        if animation_proc:
+            animation_proc.terminate()
+            sys.stdout.write("\r" + " " * 25 + "\r")
+            sys.stdout.flush()
         print(f"Error: {e}", file=sys.stderr, flush=True)
         return EXIT_CONNECTION_ERROR
 
