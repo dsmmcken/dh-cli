@@ -103,7 +103,6 @@ def kill_server(port: int) -> tuple[bool, str]:
         except subprocess.TimeoutExpired:
             return False, "Timed out waiting for docker stop"
 
-    # For all other sources (dh serve, dh repl, java, etc.) — send SIGTERM
     try:
         os.kill(server.pid, signal.SIGTERM)
         return True, f"Stopped {server.source} (pid {server.pid}) on port {port}"

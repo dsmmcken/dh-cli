@@ -1,6 +1,7 @@
 """Interactive REPL console for Deephaven."""
 from __future__ import annotations
 
+import signal
 import sys
 from typing import TYPE_CHECKING
 
@@ -30,6 +31,11 @@ class DeephavenConsole:
         """Start the interactive REPL loop."""
         if banner:
             print(banner)
+
+        # Handle SIGTERM for clean shutdown (e.g. from dh kill)
+        def _handle_sigterm(signum, frame):
+            raise SystemExit(0)
+        signal.signal(signal.SIGTERM, _handle_sigterm)
 
         while True:
             try:

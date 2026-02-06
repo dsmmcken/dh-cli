@@ -266,13 +266,23 @@ class TestKillServer:
             assert not success
             assert "No Deephaven server found on port 99999" in msg
 
-    def test_kill_dh_process(self):
+    def test_kill_dh_serve_sends_sigterm(self):
         server = ServerInfo(port=10000, pid=12345, source="dh serve")
         with patch("deephaven_cli.discovery.discover_servers", return_value=[server]), \
              patch("os.kill") as mock_kill:
             success, msg = kill_server(10000)
             assert success
             assert "dh serve" in msg
+            mock_kill.assert_called_once_with(12345, signal.SIGTERM)
+
+    def test_kill_dh_repl_sends_sigterm(self):
+        """REPL handles SIGTERM via handler registered in console.interact()."""
+        server = ServerInfo(port=10000, pid=12345, source="dh repl")
+        with patch("deephaven_cli.discovery.discover_servers", return_value=[server]), \
+             patch("os.kill") as mock_kill:
+            success, msg = kill_server(10000)
+            assert success
+            assert "dh repl" in msg
             mock_kill.assert_called_once_with(12345, signal.SIGTERM)
 
     def test_kill_docker_container(self):
