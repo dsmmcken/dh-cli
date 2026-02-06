@@ -301,6 +301,7 @@ def main() -> int:
         epilog="Examples:\n"
                "  dh serve dashboard.py\n"
                "  dh serve dashboard.py --port 8080\n"
+               "  dh serve dashboard.py --iframe my_widget\n"
                "  dh serve dashboard.py --no-browser",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
@@ -330,6 +331,11 @@ def main() -> int:
         "--no-browser",
         action="store_true",
         help="Don't open browser automatically",
+    )
+    serve_parser.add_argument(
+        "--iframe",
+        metavar="WIDGET",
+        help="Open browser to iframe URL for the given widget name",
     )
 
     # list subcommand
@@ -387,7 +393,7 @@ def main() -> int:
             client_kwargs=_get_client_kwargs(args) if args.host else None,
         )
     elif args.command == "serve":
-        return run_serve(args.script, args.port, args.jvm_args, args.verbose, args.no_browser)
+        return run_serve(args.script, args.port, args.jvm_args, args.verbose, args.no_browser, args.iframe)
     elif args.command == "list":
         return run_list()
     elif args.command == "kill":
@@ -706,7 +712,7 @@ def run_kill(port: int) -> int:
         return EXIT_CONNECTION_ERROR
 
 
-def run_serve(script_path: str, port: int, jvm_args: list[str], verbose: bool = False, no_browser: bool = False) -> int:
+def run_serve(script_path: str, port: int, jvm_args: list[str], verbose: bool = False, no_browser: bool = False, iframe: str | None = None) -> int:
     """Run a script and keep the server alive until interrupted."""
     import subprocess
     from deephaven_cli.server import DeephavenServer
@@ -758,6 +764,8 @@ def run_serve(script_path: str, port: int, jvm_args: list[str], verbose: bool = 
                     return EXIT_SCRIPT_ERROR
 
                 url = f"http://localhost:{actual_port}"
+                if iframe:
+                    url = f"{url}/iframe/widget/?name={iframe}"
                 print(f"Server running at {url}", flush=True)
                 print("Press Ctrl+C to stop.", flush=True)
 

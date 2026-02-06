@@ -92,6 +92,7 @@ For dashboards, visualizations, and long-running services:
 ```bash
 dh serve dashboard.py            # Run script, open browser, keep server alive
 dh serve dashboard.py --port 8080
+dh serve dashboard.py --iframe my_widget  # Open browser to widget iframe
 dh serve dashboard.py --no-browser  # Don't open browser automatically
 ```
 
