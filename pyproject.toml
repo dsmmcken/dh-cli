@@ -10,6 +10,7 @@ dependencies = [
     "pygments>=2.0.0",
     "deephaven-plugin-ui>=0.32.1",
     "deephaven-plugin-plotly-express>=0.18.0",
+    "deephaven-plugin-theme-pack>=0.2.0",
     "ruff>=0.8.0",
     "ty>=0.0.1a7",
 ]
