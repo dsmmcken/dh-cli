@@ -274,6 +274,17 @@ uv run pytest
 
 # Run a specific test
 uv run pytest tests/test_phase4_executor.py -v
+
+# Lint
+dh lint                  # ruff check src/ tests/
+dh lint --fix            # auto-fix issues
+
+# Format
+dh format                # ruff format src/ tests/
+dh format --check        # check without changes
+
+# Type check
+dh typecheck             # ty check
 ```
 
 ## How It Works

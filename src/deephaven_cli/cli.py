@@ -364,6 +364,73 @@ def main() -> int:
         help="Port of the server to stop",
     )
 
+    # lint subcommand
+    lint_parser = subparsers.add_parser(
+        "lint",
+        help="Run ruff check on the project",
+        description="Run ruff check on the current directory (or a specific file/folder).",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    lint_parser.add_argument(
+        "path",
+        nargs="?",
+        default=".",
+        help="File or directory to lint (default: current directory)",
+    )
+    lint_parser.add_argument(
+        "--fix",
+        action="store_true",
+        help="Automatically fix lint issues",
+    )
+    lint_parser.add_argument(
+        "extra",
+        nargs=argparse.REMAINDER,
+        help="Extra args passed to ruff (after --)",
+    )
+
+    # format subcommand
+    format_parser = subparsers.add_parser(
+        "format",
+        help="Run ruff format on the project",
+        description="Run ruff format on the current directory (or a specific file/folder).",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    format_parser.add_argument(
+        "path",
+        nargs="?",
+        default=".",
+        help="File or directory to format (default: current directory)",
+    )
+    format_parser.add_argument(
+        "--check",
+        action="store_true",
+        help="Check formatting without making changes",
+    )
+    format_parser.add_argument(
+        "extra",
+        nargs=argparse.REMAINDER,
+        help="Extra args passed to ruff (after --)",
+    )
+
+    # typecheck subcommand
+    typecheck_parser = subparsers.add_parser(
+        "typecheck",
+        help="Run ty check on the project",
+        description="Run ty check on the current directory (or a specific file/folder).",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    typecheck_parser.add_argument(
+        "path",
+        nargs="?",
+        default=".",
+        help="File or directory to check (default: current directory)",
+    )
+    typecheck_parser.add_argument(
+        "extra",
+        nargs=argparse.REMAINDER,
+        help="Extra args passed to ty (after --)",
+    )
+
     args = parser.parse_args()
 
     if args.command is None:
@@ -398,6 +465,12 @@ def main() -> int:
         return run_list()
     elif args.command == "kill":
         return run_kill(args.port)
+    elif args.command == "lint":
+        return run_lint(path=args.path, fix=args.fix, extra=args.extra)
+    elif args.command == "format":
+        return run_format(path=args.path, check=args.check, extra=args.extra)
+    elif args.command == "typecheck":
+        return run_typecheck(path=args.path, extra=args.extra)
 
     return EXIT_SUCCESS
 
@@ -710,6 +783,48 @@ def run_kill(port: int) -> int:
     else:
         print(message, file=sys.stderr)
         return EXIT_CONNECTION_ERROR
+
+
+def _strip_separator(extra: list[str] | None) -> list[str]:
+    """Strip leading '--' from extra args."""
+    return [a for a in (extra or []) if a != "--"]
+
+
+def run_lint(path: str = ".", fix: bool = False, extra: list[str] | None = None) -> int:
+    """Run ruff check on the project."""
+    cmd = [sys.executable, "-m", "ruff", "check", path]
+    if fix:
+        cmd.append("--fix")
+    cmd.extend(_strip_separator(extra))
+    try:
+        return _subprocess.run(cmd).returncode
+    except FileNotFoundError:
+        print("Error: ruff not found. Install with: uv tool install -e '.[dev]'", file=sys.stderr)
+        return EXIT_SCRIPT_ERROR
+
+
+def run_format(path: str = ".", check: bool = False, extra: list[str] | None = None) -> int:
+    """Run ruff format on the project."""
+    cmd = [sys.executable, "-m", "ruff", "format", path]
+    if check:
+        cmd.append("--check")
+    cmd.extend(_strip_separator(extra))
+    try:
+        return _subprocess.run(cmd).returncode
+    except FileNotFoundError:
+        print("Error: ruff not found. Install with: uv tool install -e '.[dev]'", file=sys.stderr)
+        return EXIT_SCRIPT_ERROR
+
+
+def run_typecheck(path: str = ".", extra: list[str] | None = None) -> int:
+    """Run ty check on the project."""
+    cmd = [sys.executable, "-m", "ty", "check", path]
+    cmd.extend(_strip_separator(extra))
+    try:
+        return _subprocess.run(cmd).returncode
+    except FileNotFoundError:
+        print("Error: ty not found. Install with: uv tool install -e '.[dev]'", file=sys.stderr)
+        return EXIT_SCRIPT_ERROR
 
 
 def run_serve(script_path: str, port: int, jvm_args: list[str], verbose: bool = False, no_browser: bool = False, iframe: str | None = None) -> int:
