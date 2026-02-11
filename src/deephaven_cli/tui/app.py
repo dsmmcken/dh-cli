@@ -423,10 +423,6 @@ class MainMenuScreen(Screen):
         margin: 0 1;
     }
 
-    #servers-info {
-        margin-top: 1;
-        width: 100%;
-    }
     """
 
     BINDINGS = [
@@ -459,11 +455,9 @@ class MainMenuScreen(Screen):
                     *[Option(label, id=opt_id) for opt_id, label in self._MENU_ITEMS],
                     id="menu-list",
                 )
-                yield Static("", id="servers-info")
 
     def on_mount(self) -> None:
         self._refresh_header()
-        self._refresh_servers()
         self.query_one("#menu-list", OptionList).focus()
 
     def _refresh_header(self) -> None:
@@ -475,20 +469,6 @@ class MainMenuScreen(Screen):
         java_info = detect_java()
         java_str = f"Java {java_info['version']}" if java_info else "No Java"
         header.update(f"[bold]Deephaven CLI[/bold]  |  v{version}  |  {java_str}")
-
-    def _refresh_servers(self) -> None:
-        from deephaven_cli.discovery import discover_servers
-
-        servers = discover_servers()
-        info = self.query_one("#servers-info", Static)
-        if servers:
-            lines = ["[bold]Running servers:[/bold]"]
-            lines.append(f"  {'PORT':<8} {'PID':<8} {'TYPE':<12}")
-            for s in servers:
-                lines.append(f"  {s.port:<8} {s.pid:<8} {s.source:<12}")
-            info.update("\n".join(lines))
-        else:
-            info.update("[dim]No running servers.[/dim]")
 
     def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
         self._handle_selection(event.option.id)
@@ -506,7 +486,7 @@ class MainMenuScreen(Screen):
         elif option_id == "versions":
             self.app.push_screen(VersionsScreen())
         elif option_id == "servers":
-            self._refresh_servers()
+            self.app.push_screen(ServersScreen())
         elif option_id == "java":
             self.app.push_screen(JavaStatusScreen())
         elif option_id == "config":
@@ -573,6 +553,129 @@ class VersionsScreen(Screen):
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "btn-back":
             self.action_go_back()
+
+    def action_go_back(self) -> None:
+        self.app.pop_screen()
+
+
+class ServersScreen(Screen):
+    """List running servers with kill and open-browser actions."""
+
+    CSS = """
+    ServersScreen {
+        align: center middle;
+    }
+
+    #servers-box {
+        width: 62;
+        height: auto;
+        max-height: 80%;
+        border: double $primary;
+        padding: 1 2;
+    }
+
+    #servers-title {
+        width: 100%;
+        text-align: center;
+        margin-bottom: 1;
+    }
+
+    #server-list {
+        height: auto;
+        max-height: 14;
+        margin: 0 1;
+    }
+
+    #servers-hint {
+        margin-top: 1;
+        width: 100%;
+        text-align: center;
+    }
+
+    #servers-status {
+        width: 100%;
+        text-align: center;
+    }
+    """
+
+    BINDINGS = [
+        ("escape", "go_back", "Back"),
+        ("k", "kill_server", "Kill"),
+        ("delete", "kill_server", "Kill"),
+        ("o", "open_browser", "Open"),
+    ]
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._servers: list = []
+
+    def compose(self) -> ComposeResult:
+        with Center():
+            with Vertical(id="servers-box"):
+                yield Static("[bold]Running Servers[/bold]", id="servers-title")
+                yield OptionList(id="server-list")
+                yield Static(
+                    "[dim]enter/o: open browser  k: kill  esc: back[/dim]",
+                    id="servers-hint",
+                )
+                yield Static("", id="servers-status")
+
+    def on_mount(self) -> None:
+        self._refresh()
+
+    def _refresh(self) -> None:
+        from deephaven_cli.discovery import discover_servers
+
+        self._servers = discover_servers()
+        server_list = self.query_one("#server-list", OptionList)
+        server_list.clear_options()
+
+        if not self._servers:
+            server_list.add_option(Option("[dim]No running servers.[/dim]", id="empty", disabled=True))
+            return
+
+        for s in self._servers:
+            script = f"  {s.script}" if s.script else ""
+            label = f":{s.port:<6} pid {s.pid:<7} {s.source}{script}"
+            server_list.add_option(Option(label, id=str(s.port)))
+
+        server_list.focus()
+
+    def _get_selected_server(self):
+        server_list = self.query_one("#server-list", OptionList)
+        highlighted = server_list.highlighted
+        if highlighted is None or highlighted < 0 or highlighted >= len(self._servers):
+            return None
+        return self._servers[highlighted]
+
+    def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
+        self.action_open_browser()
+
+    def action_open_browser(self) -> None:
+        server = self._get_selected_server()
+        if server is None:
+            return
+        from deephaven_cli.cli import _open_browser
+
+        url = f"http://localhost:{server.port}"
+        _open_browser(url)
+        self.query_one("#servers-status", Static).update(
+            f"[green]Opened {url}[/green]"
+        )
+
+    def action_kill_server(self) -> None:
+        server = self._get_selected_server()
+        if server is None:
+            return
+        from deephaven_cli.discovery import kill_server
+
+        success, message = kill_server(server.port)
+        status = self.query_one("#servers-status", Static)
+        if success:
+            status.update(f"[green]{message}[/green]")
+        else:
+            status.update(f"[red]{message}[/red]")
+        self._refresh()
 
     def action_go_back(self) -> None:
         self.app.pop_screen()
