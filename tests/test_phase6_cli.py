@@ -20,7 +20,6 @@ class TestCLIArgumentParsing:
         assert result.returncode == 0
         assert "repl" in result.stdout
         assert "exec" in result.stdout
-        assert "Examples:" in result.stdout
 
     def test_cli_help(self):
         """CLI --help shows usage information."""
@@ -56,15 +55,15 @@ class TestCLIArgumentParsing:
         assert "--verbose" in result.stdout
         assert "--timeout" in result.stdout
 
-    def test_cli_app_help(self):
-        """CLI app --help shows options."""
+    def test_cli_config_help(self):
+        """CLI config --help shows options."""
         result = subprocess.run(
-            [sys.executable, "-m", "deephaven_cli.cli", "app", "--help"],
+            [sys.executable, "-m", "deephaven_cli.cli", "config", "--help"],
             capture_output=True,
             text=True,
         )
         assert result.returncode == 0
-        assert "--port" in result.stdout
+        assert "config" in result.stdout.lower()
 
     def test_cli_unknown_command(self):
         """CLI unknown command shows error."""
@@ -113,10 +112,10 @@ class TestCLIMainFunction:
         from deephaven_cli.cli import run_exec
         assert callable(run_exec)
 
-    def test_run_app_function_exists(self):
-        """Verify run_app function exists (placeholder for Phase 8)."""
-        from deephaven_cli.cli import run_app
-        assert callable(run_app)
+    def test_run_management_tui_function_exists(self):
+        """Verify run_management_tui function exists."""
+        from deephaven_cli.cli import run_management_tui
+        assert callable(run_management_tui)
 
 
 @pytest.mark.integration

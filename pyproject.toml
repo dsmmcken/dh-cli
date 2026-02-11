@@ -1,24 +1,19 @@
 [project]
 name = "deephaven-cli"
-version = "0.1.0"
+version = "0.2.0"
 description = "Command-line tool for interacting with Deephaven servers"
 requires-python = ">=3.13"
 dependencies = [
-    "deephaven-server>=0.37.0",
-    "pydeephaven>=0.37.0",
-    "prompt_toolkit>=3.0.0",
-    "pygments>=2.0.0",
-    "deephaven-plugin-ui>=0.32.1",
-    "deephaven-plugin-plotly-express>=0.18.0",
-    "deephaven-plugin-theme-pack>=0.2.0",
-    "ruff>=0.8.0",
-    "ty>=0.0.1a7",
+    "textual[syntax]>=1.0.0",
+    "textual-fastdatatable>=0.10.0",
 ]
 
 [project.optional-dependencies]
 dev = [
     "pytest>=8.0",
     "pytest-timeout>=2.0",
+    "ruff>=0.8.0",
+    "ty>=0.0.1a7",
 ]
 
 [project.scripts]

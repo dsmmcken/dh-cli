@@ -3,10 +3,11 @@ from __future__ import annotations
 
 import argparse
 import os
+import shutil
+import subprocess as _subprocess
 import sys
 import threading
 import time
-import subprocess as _subprocess
 
 # Exit codes
 EXIT_SUCCESS = 0
@@ -14,6 +15,9 @@ EXIT_SCRIPT_ERROR = 1
 EXIT_CONNECTION_ERROR = 2
 EXIT_TIMEOUT = 3
 EXIT_INTERRUPTED = 130
+
+# Commands that require a resolved + activated Deephaven version
+_RUNTIME_COMMANDS = {"repl", "exec", "serve"}
 
 
 def _is_wsl() -> bool:
@@ -100,6 +104,16 @@ def _add_connection_args(parser: argparse.ArgumentParser) -> None:
     )
 
 
+def _add_version_flag(parser: argparse.ArgumentParser) -> None:
+    """Add --version flag for selecting Deephaven version."""
+    parser.add_argument(
+        "--version",
+        dest="dh_version",
+        metavar="VERSION",
+        help="Deephaven version to use (default: auto-resolved)",
+    )
+
+
 def _read_cert_file(path: str | None) -> bytes | None:
     """Read a certificate file and return its contents as bytes."""
     if path is None:
@@ -129,25 +143,53 @@ def _get_client_kwargs(args: argparse.Namespace) -> dict:
     }
 
 
+def _resolve_and_activate(args: argparse.Namespace) -> int | None:
+    """Resolve and activate the Deephaven version for a runtime command.
+
+    Returns None on success, or an exit code on failure.
+    """
+    from deephaven_cli.manager.activate import activate_version
+    from deephaven_cli.manager.config import resolve_version
+
+    cli_version = getattr(args, "dh_version", None)
+    version = resolve_version(cli_version=cli_version)
+    if version is None:
+        print("Error: No Deephaven version installed.", file=sys.stderr)
+        print("\n  dh install latest    Install the latest version", file=sys.stderr)
+        print("  dh install 41.1      Install a specific version", file=sys.stderr)
+        return EXIT_CONNECTION_ERROR
+    try:
+        activate_version(version)
+    except RuntimeError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return EXIT_CONNECTION_ERROR
+    return None
+
+
 DESCRIPTION = """\
 Deephaven CLI - Command-line tool for Deephaven servers
 
-Launch embedded Deephaven servers and execute Python scripts with
-real-time data capabilities.
+Manage Deephaven versions and launch servers with real-time
+data capabilities.
 """
 
 EPILOG = """\
-Examples:
+Version management:
+  dh install                           Install latest Deephaven
+  dh install 41.1                      Install a specific version
+  dh uninstall 41.1                    Remove a version
+  dh use 41.1                          Set global default version
+  dh versions                          List installed versions
+
+Runtime:
   dh repl                              Start interactive session
-  dh repl --host myserver.com          Connect to remote server
   dh exec script.py                    Run script and exit
-  dh exec -c $'print("hello")'         Execute inline code
-  dh -c $'from deephaven import *'     Shorthand for exec -c
-  dh exec script.py -v --timeout 30    Verbose mode with timeout
-  cat script.py | dh exec -            Read from stdin
-  dh serve dashboard.py                 Long-running server
+  dh serve dashboard.py                Long-running server
+
+Tools:
   dh list                              Show running servers
   dh kill 10000                        Stop server on port
+  dh doctor                            Check environment health
 
 Use 'dh <command> --help' for more details.
 """
@@ -159,6 +201,10 @@ def main() -> int:
     if len(sys.argv) >= 2 and sys.argv[1] == "-c":
         sys.argv.insert(1, "exec")
 
+    # Handle "dh java install" as a two-word subcommand
+    if len(sys.argv) >= 3 and sys.argv[1] == "java" and sys.argv[2] == "install":
+        sys.argv[1:3] = ["java-install"]
+
     parser = argparse.ArgumentParser(
         prog="dh",
         description=DESCRIPTION,
@@ -166,6 +212,121 @@ def main() -> int:
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     subparsers = parser.add_subparsers(dest="command")
+
+    # --- Manager commands (no Deephaven deps needed) ---
+
+    # install subcommand
+    install_parser = subparsers.add_parser(
+        "install",
+        help="Install a Deephaven version",
+        description="Install a Deephaven version into ~/.dh/versions/.\n\n"
+                    "Downloads deephaven-server, pydeephaven, and default plugins\n"
+                    "into an isolated venv managed by uv.",
+        epilog="Examples:\n"
+               "  dh install              Install the latest version\n"
+               "  dh install 41.1         Install a specific version\n"
+               "  dh install latest       Same as 'dh install'",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    install_parser.add_argument(
+        "install_version",
+        nargs="?",
+        default="latest",
+        metavar="VERSION",
+        help="Version to install (default: latest)",
+    )
+
+    # uninstall subcommand
+    uninstall_parser = subparsers.add_parser(
+        "uninstall",
+        help="Remove an installed Deephaven version",
+        description="Remove a previously installed Deephaven version.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    uninstall_parser.add_argument(
+        "uninstall_version",
+        metavar="VERSION",
+        help="Version to remove",
+    )
+
+    # use subcommand
+    use_parser = subparsers.add_parser(
+        "use",
+        help="Set the default Deephaven version",
+        description="Set the global default version, or write a .dhrc file for the current directory.",
+        epilog="Examples:\n"
+               "  dh use 41.1             Set global default\n"
+               "  dh use 41.1 --local     Write .dhrc in current directory",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    use_parser.add_argument(
+        "use_version",
+        metavar="VERSION",
+        help="Version to set as default",
+    )
+    use_parser.add_argument(
+        "--local",
+        action="store_true",
+        help="Write .dhrc in current directory instead of global config",
+    )
+
+    # versions subcommand
+    versions_parser = subparsers.add_parser(
+        "versions",
+        help="List installed Deephaven versions",
+        description="Show all locally installed Deephaven versions.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    versions_parser.add_argument(
+        "--remote",
+        action="store_true",
+        help="Also show versions available from PyPI",
+    )
+
+    # java subcommand (status)
+    subparsers.add_parser(
+        "java",
+        help="Show Java status",
+        description="Detect and display information about the current Java installation.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+
+    # java install (handled via argv rewrite as "java-install")
+    subparsers.add_parser(
+        "java-install",
+        help="Download Eclipse Temurin JDK 21",
+        description="Download and install Eclipse Temurin JDK 21 into ~/.dh/java/.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+
+    # doctor subcommand
+    subparsers.add_parser(
+        "doctor",
+        help="Check environment health",
+        description="Run diagnostic checks on the Deephaven CLI environment.\n\n"
+                    "Checks Java installation, installed versions, and uv availability.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+
+    # config subcommand
+    config_parser = subparsers.add_parser(
+        "config",
+        help="Show or edit Deephaven CLI configuration",
+        description="Show the current configuration from ~/.dh/config.toml.\n\n"
+                    "Use --set to change a configuration value.",
+        epilog="Examples:\n"
+               "  dh config                        Show all config\n"
+               "  dh config --set default_version 41.1\n",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    config_parser.add_argument(
+        "--set",
+        nargs=2,
+        metavar=("KEY", "VALUE"),
+        help="Set a configuration key to a value",
+    )
+
+    # --- Runtime commands (need activated Deephaven version) ---
 
     # repl subcommand
     repl_parser = subparsers.add_parser(
@@ -206,6 +367,7 @@ def main() -> int:
         action="store_true",
         help="Use Vi key bindings (default: Emacs)",
     )
+    _add_version_flag(repl_parser)
     _add_connection_args(repl_parser)
 
     # exec subcommand (agent-friendly batch mode)
@@ -286,6 +448,7 @@ def main() -> int:
         action="store_true",
         help="Suppress column types and row count in table output",
     )
+    _add_version_flag(exec_parser)
     _add_connection_args(exec_parser)
 
     # serve subcommand (long-running application mode)
@@ -337,6 +500,9 @@ def main() -> int:
         metavar="WIDGET",
         help="Open browser to iframe URL for the given widget name",
     )
+    _add_version_flag(serve_parser)
+
+    # --- Tool commands (unchanged) ---
 
     # list subcommand
     subparsers.add_parser(
@@ -434,8 +600,36 @@ def main() -> int:
     args = parser.parse_args()
 
     if args.command is None:
+        if sys.stdin.isatty():
+            return run_management_tui()
         parser.print_help()
         return EXIT_SUCCESS
+
+    # --- Manager commands dispatch (no Deephaven activation needed) ---
+
+    if args.command == "install":
+        return run_install(args.install_version)
+    elif args.command == "uninstall":
+        return run_uninstall(args.uninstall_version)
+    elif args.command == "use":
+        return run_use(args.use_version, local=args.local)
+    elif args.command == "versions":
+        return run_versions(remote=args.remote)
+    elif args.command == "java":
+        return run_java_status()
+    elif args.command == "java-install":
+        return run_java_install()
+    elif args.command == "doctor":
+        return run_doctor()
+    elif args.command == "config":
+        return run_config(set_pair=args.set)
+
+    # --- Runtime commands dispatch (need activated version) ---
+
+    if args.command in _RUNTIME_COMMANDS:
+        exit_code = _resolve_and_activate(args)
+        if exit_code is not None:
+            return exit_code
 
     if args.command == "repl":
         return run_repl(
@@ -461,6 +655,9 @@ def main() -> int:
         )
     elif args.command == "serve":
         return run_serve(args.script, args.port, args.jvm_args, args.verbose, args.no_browser, args.iframe)
+
+    # --- Tool commands dispatch (unchanged) ---
+
     elif args.command == "list":
         return run_list()
     elif args.command == "kill":
@@ -474,6 +671,270 @@ def main() -> int:
 
     return EXIT_SUCCESS
 
+
+# ---------------------------------------------------------------------------
+# Manager command handlers
+# ---------------------------------------------------------------------------
+
+def run_management_tui() -> int:
+    """Launch the interactive management TUI."""
+    from deephaven_cli.tui.app import run_management_tui as _run_tui
+
+    result = _run_tui()
+    if result == "launch-repl":
+        return run_repl(port=10000, jvm_args=["-Xmx4g"])
+    elif result == "launch-serve":
+        print("Use: dh serve <script.py>", file=sys.stderr)
+        return EXIT_SUCCESS
+    elif result == "launch-exec":
+        print("Use: dh exec <script.py> or dh exec -c '<code>'", file=sys.stderr)
+        return EXIT_SUCCESS
+    return EXIT_SUCCESS
+
+
+def run_install(version: str) -> int:
+    """Install a Deephaven version."""
+    from deephaven_cli.manager.pypi import fetch_latest_version, is_valid_version
+    from deephaven_cli.manager.versions import install_version, is_version_installed
+
+    # Resolve "latest" to an actual version
+    if version == "latest":
+        try:
+            version = fetch_latest_version()
+            print(f"Latest version: {version}")
+        except Exception as e:
+            print(f"Error: Could not determine latest version: {e}", file=sys.stderr)
+            return EXIT_CONNECTION_ERROR
+
+    if is_version_installed(version):
+        print(f"Version {version} is already installed.")
+        return EXIT_SUCCESS
+
+    # Validate version exists on PyPI
+    try:
+        if not is_valid_version(version):
+            print(f"Error: Version {version} not found on PyPI.", file=sys.stderr)
+            return EXIT_SCRIPT_ERROR
+    except Exception as e:
+        print(f"Warning: Could not validate version on PyPI: {e}", file=sys.stderr)
+
+    from rich.console import Console
+
+    console = Console(stderr=True)
+    console.print(f"Installing Deephaven {version}...")
+
+    def _on_progress(msg: str) -> None:
+        console.print(f"  {msg}")
+
+    success = install_version(version, on_progress=_on_progress)
+    if success:
+        console.print(f"[green]Deephaven {version} installed successfully.[/green]")
+        # Set as default if it's the first version
+        from deephaven_cli.manager.config import get_default_version, set_default_version
+        if get_default_version() is None:
+            set_default_version(version)
+            print(f"Set {version} as the default version.")
+        return EXIT_SUCCESS
+    else:
+        print(f"Error: Failed to install Deephaven {version}.", file=sys.stderr)
+        return EXIT_SCRIPT_ERROR
+
+
+def run_uninstall(version: str) -> int:
+    """Remove an installed Deephaven version."""
+    from deephaven_cli.manager.versions import uninstall_version
+
+    if uninstall_version(version):
+        print(f"Deephaven {version} uninstalled.")
+        # Clear default if this was the default version
+        from deephaven_cli.manager.config import (
+            get_default_version,
+            get_latest_installed_version,
+            load_config,
+            save_config,
+            set_default_version,
+        )
+        if get_default_version() == version:
+            latest = get_latest_installed_version()
+            if latest:
+                set_default_version(latest)
+                print(f"Default version changed to {latest}.")
+            else:
+                config = load_config()
+                config.pop("default_version", None)
+                save_config(config)
+                print("No versions remaining. Default version cleared.")
+        return EXIT_SUCCESS
+    else:
+        print(f"Error: Version {version} is not installed.", file=sys.stderr)
+        return EXIT_SCRIPT_ERROR
+
+
+def run_use(version: str, local: bool = False) -> int:
+    """Set the default Deephaven version."""
+    from deephaven_cli.manager.versions import is_version_installed
+
+    if not is_version_installed(version):
+        print(f"Error: Version {version} is not installed.", file=sys.stderr)
+        print(f"Install it first: dh install {version}", file=sys.stderr)
+        return EXIT_SCRIPT_ERROR
+
+    if local:
+        from pathlib import Path
+
+        from deephaven_cli.manager.config import write_dhrc
+        write_dhrc(Path.cwd(), version)
+        print(f"Set local version to {version} (.dhrc written).")
+    else:
+        from deephaven_cli.manager.config import set_default_version
+        set_default_version(version)
+        print(f"Set global default version to {version}.")
+    return EXIT_SUCCESS
+
+
+def run_versions(remote: bool = False) -> int:
+    """List installed Deephaven versions."""
+    from deephaven_cli.manager.versions import list_installed_versions
+
+    installed = list_installed_versions()
+    if not installed:
+        print("No Deephaven versions installed.")
+        print("Install one with: dh install")
+        return EXIT_SUCCESS
+
+    print("Installed versions:")
+    for info in installed:
+        marker = " (default)" if info["is_default"] else ""
+        print(f"  {info['version']}{marker}  [installed {info['installed_date']}]")
+
+    if remote:
+        print()
+        try:
+            from deephaven_cli.manager.pypi import fetch_available_versions
+            available = fetch_available_versions()
+            installed_set = {v["version"] for v in installed}
+            remote_only = [v for v in available if v not in installed_set]
+            if remote_only:
+                print(f"Available from PyPI ({len(remote_only)} more):")
+                for v in remote_only[:20]:
+                    print(f"  {v}")
+                if len(remote_only) > 20:
+                    print(f"  ... and {len(remote_only) - 20} more")
+            else:
+                print("All available versions are installed.")
+        except Exception as e:
+            print(f"Error fetching remote versions: {e}", file=sys.stderr)
+
+    return EXIT_SUCCESS
+
+
+def run_java_status() -> int:
+    """Show Java status."""
+    from deephaven_cli.manager.java import detect_java
+
+    info = detect_java()
+    if info is None:
+        print("No compatible Java found (requires Java >= 17).")
+        print("\nInstall Java with: dh java install")
+        return EXIT_SCRIPT_ERROR
+
+    print(f"Java {info['version']}")
+    print(f"  Path: {info['path']}")
+    print(f"  Home: {info['home']}")
+    print(f"  Source: {info['source']}")
+    return EXIT_SUCCESS
+
+
+def run_java_install() -> int:
+    """Download and install Eclipse Temurin JDK."""
+    from deephaven_cli.manager.java import detect_java, install_java
+
+    existing = detect_java()
+    if existing:
+        print(f"Java {existing['version']} already available ({existing['source']}).")
+        print("Proceeding with download anyway...")
+
+    try:
+        jdk_home = install_java()
+        print(f"Java installed to: {jdk_home}")
+        return EXIT_SUCCESS
+    except Exception as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return EXIT_SCRIPT_ERROR
+
+
+def run_doctor() -> int:
+    """Check environment health."""
+    from deephaven_cli.manager.config import get_default_version, get_installed_versions
+    from deephaven_cli.manager.java import detect_java
+
+    print("Deephaven CLI Doctor\n")
+    all_ok = True
+
+    # Check uv
+    uv_path = shutil.which("uv")
+    if uv_path:
+        print(f"  [ok] uv: {uv_path}")
+    else:
+        print("  [!!] uv: not found (required for installing versions)")
+        all_ok = False
+
+    # Check Java
+    java_info = detect_java()
+    if java_info:
+        print(f"  [ok] Java {java_info['version']} ({java_info['source']})")
+    else:
+        print("  [!!] Java: not found (requires >= 17, run 'dh java install')")
+        all_ok = False
+
+    # Check installed versions
+    versions = get_installed_versions()
+    if versions:
+        print(f"  [ok] Installed versions: {len(versions)}")
+        default = get_default_version()
+        if default:
+            print(f"  [ok] Default version: {default}")
+        else:
+            print("  [!!] No default version set (run 'dh use VERSION')")
+            all_ok = False
+    else:
+        print("  [!!] No Deephaven versions installed (run 'dh install')")
+        all_ok = False
+
+    print()
+    if all_ok:
+        print("Everything looks good!")
+    else:
+        print("Some issues found. See above for details.")
+    return EXIT_SUCCESS if all_ok else EXIT_SCRIPT_ERROR
+
+
+def run_config(set_pair: list[str] | None = None) -> int:
+    """Show or edit configuration."""
+    from deephaven_cli.manager.config import _config_path, load_config, save_config
+
+    if set_pair:
+        key, value = set_pair
+        config = load_config()
+        config[key] = value
+        save_config(config)
+        print(f"Set {key} = {value}")
+        return EXIT_SUCCESS
+
+    config = load_config()
+    path = _config_path()
+    print(f"Config: {path}\n")
+    if not config:
+        print("(empty -- no settings configured)")
+        return EXIT_SUCCESS
+    for key, value in config.items():
+        print(f"  {key} = {value}")
+    return EXIT_SUCCESS
+
+
+# ---------------------------------------------------------------------------
+# Animation scripts for runtime commands
+# ---------------------------------------------------------------------------
 
 # Inline script for animation subprocess (avoids import overhead)
 _ANIMATION_SCRIPT = '''
@@ -501,6 +962,26 @@ while True:
 '''
 
 
+# ---------------------------------------------------------------------------
+# Runtime command handlers
+# ---------------------------------------------------------------------------
+
+def _run_repl_interactive(client, port: int, vi_mode: bool, host: str | None = None) -> None:
+    """Launch the Textual TUI REPL (interactive TTY mode)."""
+    from deephaven_cli.repl.app import DeephavenREPLApp
+
+    app = DeephavenREPLApp(client, port=port, vi_mode=vi_mode, host=host)
+    app.run()
+
+
+def _run_repl_fallback(client, port: int, vi_mode: bool, host: str | None = None) -> None:
+    """Launch the plain-text console REPL (piped / non-TTY mode)."""
+    from deephaven_cli.repl.console import DeephavenConsole
+
+    console = DeephavenConsole(client, port=port, vi_mode=vi_mode)
+    console.interact()
+
+
 def run_repl(
     port: int,
     jvm_args: list[str],
@@ -511,8 +992,11 @@ def run_repl(
 ) -> int:
     """Run the interactive REPL."""
     import subprocess
+
     from deephaven_cli.client import DeephavenClient
-    from deephaven_cli.repl.console import DeephavenConsole
+
+    use_tui = sys.stdin.isatty()
+    run_console = _run_repl_interactive if use_tui else _run_repl_fallback
 
     animation_proc = None
 
@@ -520,7 +1004,7 @@ def run_repl(
     if host:
         if verbose:
             print(f"Connecting to {host}:{port}...")
-        else:
+        elif not use_tui:
             animation_proc = subprocess.Popen(
                 [sys.executable, "-c", _CONNECTING_ANIMATION_SCRIPT],
                 stdout=sys.stdout,
@@ -535,13 +1019,12 @@ def run_repl(
                     sys.stdout.write("\r" + " " * 25 + "\r")
                     sys.stdout.flush()
 
-                if verbose:
+                if verbose and not use_tui:
                     print(f"Connected to {host}:{port}\n")
                     print("Deephaven REPL (remote)")
                     print("Type 'exit()' or press Ctrl+D to quit.\n")
 
-                console = DeephavenConsole(client, port=port, vi_mode=vi_mode)
-                console.interact()
+                run_console(client, port=port, vi_mode=vi_mode, host=host)
 
         except KeyboardInterrupt:
             if animation_proc:
@@ -566,7 +1049,7 @@ def run_repl(
     if verbose:
         print(f"Starting Deephaven server on port {port}...")
         print("(this may take a moment for JVM initialization)")
-    else:
+    elif not use_tui:
         animation_proc = subprocess.Popen(
             [sys.executable, "-c", _ANIMATION_SCRIPT],
             stdout=sys.stdout,
@@ -586,13 +1069,12 @@ def run_repl(
                     sys.stdout.write("\r" + " " * 25 + "\r")
                     sys.stdout.flush()
 
-                if verbose:
+                if verbose and not use_tui:
                     print("Connected!\n")
                     print("Deephaven REPL")
                     print("Type 'exit()' or press Ctrl+D to quit.\n")
 
-                console = DeephavenConsole(client, port=actual_port, vi_mode=vi_mode)
-                console.interact()
+                run_console(client, port=actual_port, vi_mode=vi_mode, host=host)
 
     except KeyboardInterrupt:
         if animation_proc:
@@ -763,6 +1245,10 @@ def run_exec(
             timer.cancel()
 
 
+# ---------------------------------------------------------------------------
+# Tool command handlers (unchanged)
+# ---------------------------------------------------------------------------
+
 def run_list() -> int:
     """List all running Deephaven servers."""
     from deephaven_cli.discovery import discover_servers, format_server_list
@@ -827,11 +1313,15 @@ def run_typecheck(path: str = ".", extra: list[str] | None = None) -> int:
         return EXIT_SCRIPT_ERROR
 
 
-def run_serve(script_path: str, port: int, jvm_args: list[str], verbose: bool = False, no_browser: bool = False, iframe: str | None = None) -> int:
+def run_serve(
+    script_path: str, port: int, jvm_args: list[str],
+    verbose: bool = False, no_browser: bool = False, iframe: str | None = None,
+) -> int:
     """Run a script and keep the server alive until interrupted."""
     import subprocess
-    from deephaven_cli.server import DeephavenServer
+
     from deephaven_cli.client import DeephavenClient
+    from deephaven_cli.server import DeephavenServer
 
     # Read the script
     try:

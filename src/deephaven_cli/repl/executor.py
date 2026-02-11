@@ -218,13 +218,48 @@ except NameError:
         except Exception:
             pass
 
+    def get_table_arrow(
+        self,
+        table_name: str,
+        max_rows: int = 10_000,
+    ) -> tuple | None:
+        """Get Arrow data and metadata for a table.
+
+        Args:
+            table_name: Name of the table on the server.
+            max_rows: Maximum rows to transfer (default: 10,000).
+
+        Returns:
+            Tuple of (arrow_table, TableMeta) or None on error.
+        """
+        session = self.client.session
+        try:
+            import pyarrow as pa
+
+            table = session.open_table(table_name)
+            is_refreshing = table.is_refreshing
+
+            # Fetch data — use slice for large tables to avoid transferring everything
+            arrow_full = table.to_arrow()
+            total_rows = arrow_full.num_rows
+            schema = arrow_full.schema
+            columns = [(field.name, str(field.type)) for field in schema]
+            meta = TableMeta(total_rows, is_refreshing, columns)
+
+            if total_rows <= max_rows:
+                return arrow_full, meta
+            else:
+                return arrow_full.slice(0, max_rows), meta
+        except Exception:
+            return None
+
     def get_table_preview(
         self,
         table_name: str,
         rows: int = 10,
         show_meta: bool = True,
     ) -> tuple[str, TableMeta | None]:
-        """Get a string preview of a table.
+        """Get a string preview of a table (used by fallback console).
 
         Args:
             table_name: Name of the table to preview

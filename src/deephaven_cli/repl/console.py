@@ -1,16 +1,17 @@
-"""Interactive REPL console for Deephaven."""
+"""Interactive REPL console for Deephaven.
+
+Uses stdlib ``input()`` for the basic REPL loop.  The full Textual TUI REPL
+(Phase 5 of the slim-install plan) will replace this with a rich widget-based
+interface.
+"""
 from __future__ import annotations
 
 import signal
 import sys
 from typing import TYPE_CHECKING
 
-from deephaven_cli.repl.prompt import create_prompt_session
-
 if TYPE_CHECKING:
     from deephaven_cli.client import DeephavenClient
-    from deephaven_cli.repl.executor import CodeExecutor
-    from prompt_toolkit import PromptSession
 
 
 class DeephavenConsole:
@@ -23,9 +24,7 @@ class DeephavenConsole:
 
         self.client = client
         self.executor = CodeExecutor(client)
-        self._session: PromptSession = create_prompt_session(
-            client, port, vi_mode=vi_mode
-        )
+        self.port = port
 
     def interact(self, banner: str | None = None) -> None:
         """Start the interactive REPL loop."""
@@ -39,8 +38,7 @@ class DeephavenConsole:
 
         while True:
             try:
-                # prompt_toolkit handles multi-line, history, suggestions
-                text = self._session.prompt(">>> ")
+                text = input(">>> ")
 
                 # Handle special commands
                 if text.strip() in ("exit()", "quit()"):
