@@ -10,7 +10,7 @@ import subprocess
 import sys
 
 from textual.app import App, ComposeResult
-from textual.containers import Center, Horizontal, Vertical, VerticalScroll
+from textual.containers import Center, Horizontal, Vertical
 from textual.screen import Screen
 from textual.widgets import (
     Button,
@@ -19,9 +19,11 @@ from textual.widgets import (
     Label,
     ListItem,
     ListView,
+    OptionList,
     ProgressBar,
     Static,
 )
+from textual.widgets.option_list import Option
 
 
 # ---------------------------------------------------------------------------
@@ -404,75 +406,74 @@ class MainMenuScreen(Screen):
     }
 
     #menu-box {
-        width: 60;
+        width: 56;
         height: auto;
         border: double $primary;
-        padding: 2 4;
+        padding: 1 2;
     }
 
-    #menu-box Static {
+    #menu-header {
         width: 100%;
+        text-align: center;
+        margin-bottom: 1;
     }
 
-    #menu-grid {
-        margin: 1 0;
+    #menu-list {
         height: auto;
+        margin: 0 1;
     }
 
-    #menu-grid Button {
-        margin: 0 1 1 0;
-        min-width: 24;
-    }
-
-    #servers-section {
+    #servers-info {
         margin-top: 1;
-        height: auto;
+        width: 100%;
     }
     """
 
     BINDINGS = [
-        ("r", "launch_repl", "REPL"),
-        ("s", "launch_serve", "Serve"),
-        ("e", "launch_exec", "Execute"),
-        ("v", "manage_versions", "Versions"),
-        ("l", "list_servers", "Servers"),
-        ("j", "java_status", "Java"),
-        ("q", "quit_app", "Quit"),
+        ("r", "select_option('repl')", "REPL"),
+        ("s", "select_option('serve')", "Serve"),
+        ("e", "select_option('exec')", "Execute"),
+        ("v", "select_option('versions')", "Versions"),
+        ("l", "select_option('servers')", "Servers"),
+        ("j", "select_option('java')", "Java"),
+        ("c", "select_option('config')", "Config"),
+        ("q", "select_option('quit')", "Quit"),
+    ]
+
+    _MENU_ITEMS = [
+        ("repl", "Start REPL"),
+        ("exec", "Execute a script"),
+        ("serve", "Serve a script"),
+        ("versions", "Manage versions"),
+        ("servers", "Running servers"),
+        ("java", "Java"),
+        ("config", "Config"),
+        ("quit", "Quit"),
     ]
 
     def compose(self) -> ComposeResult:
         with Center():
             with Vertical(id="menu-box"):
                 yield Static("", id="menu-header")
-                yield Static("")
-                with Horizontal(id="menu-grid"):
-                    with Vertical():
-                        yield Button("[r] Start REPL", id="btn-repl")
-                        yield Button("[e] Execute Script", id="btn-exec")
-                        yield Button("[l] Running Servers", id="btn-servers")
-                        yield Button("[q] Quit", id="btn-quit")
-                    with Vertical():
-                        yield Button("[s] Serve Script", id="btn-serve")
-                        yield Button("[v] Manage Versions", id="btn-versions")
-                        yield Button("[j] Java", id="btn-java")
-                with Vertical(id="servers-section"):
-                    yield Static("", id="servers-info")
-        yield Footer()
+                yield OptionList(
+                    *[Option(label, id=opt_id) for opt_id, label in self._MENU_ITEMS],
+                    id="menu-list",
+                )
+                yield Static("", id="servers-info")
 
     def on_mount(self) -> None:
         self._refresh_header()
         self._refresh_servers()
+        self.query_one("#menu-list", OptionList).focus()
 
     def _refresh_header(self) -> None:
         from deephaven_cli.manager.config import get_default_version
         from deephaven_cli.manager.java import detect_java
 
         header = self.query_one("#menu-header", Static)
-
         version = get_default_version() or "none"
         java_info = detect_java()
         java_str = f"Java {java_info['version']}" if java_info else "No Java"
-
         header.update(f"[bold]Deephaven CLI[/bold]  |  v{version}  |  {java_str}")
 
     def _refresh_servers(self) -> None:
@@ -489,43 +490,29 @@ class MainMenuScreen(Screen):
         else:
             info.update("[dim]No running servers.[/dim]")
 
-    def on_button_pressed(self, event: Button.Pressed) -> None:
-        btn_id = event.button.id
-        if btn_id == "btn-repl":
-            self.action_launch_repl()
-        elif btn_id == "btn-serve":
-            self.action_launch_serve()
-        elif btn_id == "btn-exec":
-            self.action_launch_exec()
-        elif btn_id == "btn-versions":
-            self.action_manage_versions()
-        elif btn_id == "btn-servers":
-            self.action_list_servers()
-        elif btn_id == "btn-java":
-            self.action_java_status()
-        elif btn_id == "btn-quit":
-            self.action_quit_app()
+    def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
+        self._handle_selection(event.option.id)
 
-    def action_launch_repl(self) -> None:
-        self.app.exit(result="launch-repl")
+    def action_select_option(self, option_id: str) -> None:
+        self._handle_selection(option_id)
 
-    def action_launch_serve(self) -> None:
-        self.app.exit(result="launch-serve")
-
-    def action_launch_exec(self) -> None:
-        self.app.exit(result="launch-exec")
-
-    def action_manage_versions(self) -> None:
-        self.app.push_screen(VersionsScreen())
-
-    def action_list_servers(self) -> None:
-        self._refresh_servers()
-
-    def action_java_status(self) -> None:
-        self.app.push_screen(JavaStatusScreen())
-
-    def action_quit_app(self) -> None:
-        self.app.exit()
+    def _handle_selection(self, option_id: str | None) -> None:
+        if option_id == "repl":
+            self.app.exit(result="launch-repl")
+        elif option_id == "serve":
+            self.app.exit(result="launch-serve")
+        elif option_id == "exec":
+            self.app.exit(result="launch-exec")
+        elif option_id == "versions":
+            self.app.push_screen(VersionsScreen())
+        elif option_id == "servers":
+            self._refresh_servers()
+        elif option_id == "java":
+            self.app.push_screen(JavaStatusScreen())
+        elif option_id == "config":
+            self.app.push_screen(ConfigScreen())
+        elif option_id == "quit":
+            self.app.exit()
 
 
 class VersionsScreen(Screen):
@@ -635,6 +622,54 @@ class JavaStatusScreen(Screen):
                 "[red]No compatible Java found (requires >= 17).[/red]\n\n"
                 "Install with: dh java install"
             )
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "btn-back":
+            self.action_go_back()
+
+    def action_go_back(self) -> None:
+        self.app.pop_screen()
+
+
+class ConfigScreen(Screen):
+    """Show and edit configuration."""
+
+    CSS = """
+    ConfigScreen {
+        align: center middle;
+    }
+
+    #config-box {
+        width: 56;
+        height: auto;
+        border: double $primary;
+        padding: 2 4;
+    }
+    """
+
+    BINDINGS = [("escape", "go_back", "Back")]
+
+    def compose(self) -> ComposeResult:
+        with Center():
+            with Vertical(id="config-box"):
+                yield Static("[bold]Configuration[/bold]")
+                yield Static("", id="config-content")
+                yield Static("")
+                with Center():
+                    yield Button("Back", id="btn-back")
+
+    def on_mount(self) -> None:
+        from deephaven_cli.manager.config import load_config
+
+        content = self.query_one("#config-content", Static)
+        config = load_config()
+        if config:
+            lines = []
+            for key, value in sorted(config.items()):
+                lines.append(f"  {key} = {value}")
+            content.update("\n".join(lines))
+        else:
+            content.update("[dim]No configuration set.[/dim]\n\nRun: dh config --set KEY VALUE")
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "btn-back":
