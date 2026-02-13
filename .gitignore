@@ -38,6 +38,9 @@ htmlcov/
 .tox/
 .nox/
 
+# Go binaries
+go_src/dhg
+
 # OS
 .DS_Store
 Thumbs.db
