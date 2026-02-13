@@ -157,7 +157,7 @@ func (m ServersScreen) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if len(m.servers) > 0 {
 				s := m.servers[m.cursor]
 				url := fmt.Sprintf("http://localhost:%d", s.Port)
-				openBrowser(url)
+				OpenBrowser(url)
 				m.status = fmt.Sprintf("Opened %s", url)
 			}
 		case key.Matches(msg, m.keys.Help):
@@ -226,8 +226,11 @@ func (m ServersScreen) View() string {
 	return b.String()
 }
 
-// openBrowser opens the given URL in the default browser, with WSL support.
-func openBrowser(url string) {
+// OpenBrowser opens the given URL in the default browser, with WSL support.
+// Exported as a var so tests can replace it with a no-op.
+var OpenBrowser = openBrowserImpl
+
+func openBrowserImpl(url string) {
 	if isWSL() {
 		exec.Command("cmd.exe", "/c", "start", url).Start()
 		return

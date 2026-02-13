@@ -366,6 +366,11 @@ func TestServersScreen_HasExpectedKeyBindings(t *testing.T) {
 }
 
 func TestServersScreen_OpenSetsStatus(t *testing.T) {
+	// Replace browser launcher with no-op so the test doesn't open a real browser.
+	orig := screens.OpenBrowser
+	screens.OpenBrowser = func(string) {}
+	t.Cleanup(func() { screens.OpenBrowser = orig })
+
 	servers := []discovery.Server{
 		{Port: 10000, PID: 1234, Source: "java"},
 	}

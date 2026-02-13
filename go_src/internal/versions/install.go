@@ -54,7 +54,10 @@ func Install(dhgHome, version, pythonVer string, plugins []string, onProgress fu
 		pythonBin = filepath.Join(venvDir, "Scripts", "python.exe")
 	}
 
-	pipArgs := []string{"pip", "install", "--python", pythonBin, fmt.Sprintf("deephaven-server==%s", version)}
+	pipArgs := []string{"pip", "install", "--python", pythonBin,
+		fmt.Sprintf("deephaven-server==%s", version),
+		fmt.Sprintf("pydeephaven==%s", version),
+	}
 	for _, p := range plugins {
 		pipArgs = append(pipArgs, p)
 	}
