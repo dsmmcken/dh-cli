@@ -1,0 +1,7 @@
+# dhg kill with non-existent port exits non-zero with error message
+! exec dhg kill 99999
+stderr 'no server found'
+
+# dhg kill --json with non-existent port outputs JSON error
+! exec dhg kill --json 99999
+stderr 'server_not_found'

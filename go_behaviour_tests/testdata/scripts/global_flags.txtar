@@ -1,0 +1,3 @@
+# --verbose and --quiet are mutually exclusive
+! exec dhg --verbose --quiet
+stderr .

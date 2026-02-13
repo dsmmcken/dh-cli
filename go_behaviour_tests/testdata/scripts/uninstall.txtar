@@ -1,0 +1,26 @@
+# uninstall --help shows usage
+exec dhg uninstall --help
+stdout 'dhg uninstall'
+stdout '\-\-force'
+! stderr .
+
+# uninstall nonexistent version fails
+! exec dhg uninstall 99.99.99 --force
+stderr 'not installed'
+
+# uninstall --force removes version directory
+mkdir $DHG_HOME/versions/0.36.0
+cp meta.toml $DHG_HOME/versions/0.36.0/meta.toml
+exec dhg uninstall 0.36.0 --force
+stdout 'Uninstalled Deephaven 0\.36\.0'
+! exists $DHG_HOME/versions/0.36.0
+
+# uninstall --force --json returns structured output
+mkdir $DHG_HOME/versions/0.37.0
+cp meta.toml $DHG_HOME/versions/0.37.0/meta.toml
+exec dhg uninstall 0.37.0 --force --json
+stdout '"version": "0.37.0"'
+stdout '"status": "uninstalled"'
+
+-- meta.toml --
+installed_at = 2024-01-15T10:30:00Z

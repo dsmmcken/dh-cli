@@ -1,0 +1,26 @@
+# use --help shows usage
+exec dhg use --help
+stdout 'dhg use'
+stdout '\-\-local'
+! stderr .
+
+# use with non-installed version fails
+! exec dhg use 99.99.99
+stderr 'not installed'
+
+# use sets default version after setting up a fake installed version
+mkdir $DHG_HOME/versions/0.36.0
+cp meta.toml $DHG_HOME/versions/0.36.0/meta.toml
+exec dhg use 0.36.0
+stdout 'Set default version to 0\.36\.0'
+exec dhg config get default_version
+stdout '0\.36\.0'
+
+# use --json returns structured output
+exec dhg use 0.36.0 --json
+stdout '"version": "0.36.0"'
+stdout '"scope": "global"'
+stdout '"config_path"'
+
+-- meta.toml --
+installed_at = 2024-01-15T10:30:00Z

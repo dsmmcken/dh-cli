@@ -1,0 +1,4 @@
+# dhg setup --help shows --non-interactive flag
+exec dhg setup --help
+stdout 'non-interactive'
+stdout 'setup'

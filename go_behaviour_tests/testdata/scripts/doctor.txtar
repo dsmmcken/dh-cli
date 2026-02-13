@@ -1,0 +1,20 @@
+# dhg doctor shows uv and Java in output
+exec dhg doctor
+stdout 'uv'
+stdout 'Java'
+
+# dhg doctor --json outputs valid JSON with required fields
+exec dhg doctor --json
+stdout '"healthy"'
+stdout '"checks"'
+stdout '"name"'
+stdout '"status"'
+stdout '"detail"'
+
+# dhg doctor --no-color produces no ANSI escape sequences
+exec dhg doctor --no-color
+! stdout '\x1b\['
+
+# dhg doctor --help shows --fix flag
+exec dhg doctor --help
+stdout '\-\-fix'
