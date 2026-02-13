@@ -1,0 +1,204 @@
+# =============================================================================
+# exec --help shows usage and all key flags
+# =============================================================================
+exec dhg exec --help
+stdout 'Execute Python code'
+stdout '\-c'
+stdout '\-\-timeout'
+stdout '\-\-host'
+stdout '\-\-port'
+stdout '\-\-jvm-args'
+stdout '\-\-version'
+stdout '\-\-no-show-tables'
+stdout '\-\-no-table-meta'
+stdout '\-\-tls'
+! stderr .
+
+# exec appears in root --help
+exec dhg --help
+stdout 'exec'
+
+# =============================================================================
+# Input validation (no server/version needed)
+# =============================================================================
+
+# No code and no script file
+! exec dhg exec
+stderr 'must provide either -c CODE or a script file'
+
+# Both -c and script file is an error
+! exec dhg exec -c "print('hello')" script.py
+stderr 'cannot use both -c and a script file'
+
+# Nonexistent script file
+! exec dhg exec nonexistent.py
+stderr 'reading script file'
+
+# =============================================================================
+# Empty code handling (no server/version needed)
+# =============================================================================
+
+# Empty code is a no-op success (exit 0, no output)
+exec dhg exec -c '   '
+! stdout .
+! stderr .
+
+# Empty code with --json returns valid JSON with expected keys
+exec dhg exec --json -c '   '
+stdout '"exit_code"'
+stdout '"stdout"'
+stdout '"stderr"'
+stdout '"tables"'
+! stderr .
+
+# =============================================================================
+# Version resolution errors (no installed versions)
+# =============================================================================
+
+# exec -c fails at version resolution when nothing is configured
+! exec dhg exec -c "print('hello')"
+stderr 'resolving version'
+
+# -c shorthand: dhg -c maps to dhg exec -c (fails at version, not unknown command)
+! exec dhg -c "print('hello')"
+stderr 'resolving version'
+
+# Explicit --version for a version that has no venv installed
+! exec dhg exec -c "print('hello')" --version 0.35.1
+stderr 'finding venv python'
+
+# =============================================================================
+# Mock-based integration tests
+# Verify argument passing to the Python runner without needing Deephaven.
+# Uses a mock python that prints the runner CLI args and a mock java.
+# =============================================================================
+
+env DHG_VERSION=0.35.1
+env JAVA_HOME=$WORK/fakejava
+mkdir fakejava/bin
+mkdir .dhg/versions/0.35.1/.venv/bin
+cp mock/fakejava fakejava/bin/java
+cp mock/fakepython .dhg/versions/0.35.1/.venv/bin/python
+exec chmod +x fakejava/bin/java
+exec chmod +x .dhg/versions/0.35.1/.venv/bin/python
+
+# --- Basic exec -c: embedded mode with default arguments ---
+exec dhg exec -c "print('hello')"
+stdout 'ARG:--mode'
+stdout 'ARG:embedded'
+stdout 'ARG:--port'
+stdout 'ARG:10000'
+stdout 'ARG:--jvm-args=-Xmx4g'
+stdout 'ARG:--show-tables'
+stdout 'ARG:--show-table-meta'
+stdout 'ARG:--cwd'
+
+# --- --jvm-args regression test ---
+# Go must pass --jvm-args=VALUE as a single token, not --jvm-args VALUE.
+# The old code passed them separately, causing argparse to interpret -Xmx4g as a flag.
+exec dhg exec -c "x=1"
+stdout 'ARG:--jvm-args=-Xmx4g'
+
+# --- Custom --jvm-args ---
+exec dhg exec -c "x=1" --jvm-args '-Xmx8g'
+stdout 'ARG:--jvm-args=-Xmx8g'
+
+# --- --no-show-tables suppresses --show-tables in runner args ---
+exec dhg exec -c "x=1" --no-show-tables
+! stdout 'ARG:--show-tables'
+stdout 'ARG:--show-table-meta'
+
+# --- --no-table-meta suppresses --show-table-meta in runner args ---
+exec dhg exec -c "x=1" --no-table-meta
+stdout 'ARG:--show-tables'
+! stdout 'ARG:--show-table-meta'
+
+# --- Both --no-show-tables and --no-table-meta ---
+exec dhg exec -c "x=1" --no-show-tables --no-table-meta
+! stdout 'ARG:--show-tables'
+! stdout 'ARG:--show-table-meta'
+
+# --- Custom port ---
+exec dhg exec -c "x=1" --port 8080
+stdout 'ARG:--port'
+stdout 'ARG:8080'
+
+# --- Remote mode with --host ---
+exec dhg exec -c "x=1" --host remote.example.com
+stdout 'ARG:--mode'
+stdout 'ARG:remote'
+stdout 'ARG:--host'
+stdout 'ARG:remote.example.com'
+
+# --- Remote mode with TLS and auth flags ---
+exec dhg exec -c "x=1" --host remote.example.com --tls --auth-type token --auth-token mytoken
+stdout 'ARG:--mode'
+stdout 'ARG:remote'
+stdout 'ARG:--tls'
+stdout 'ARG:--auth-type'
+stdout 'ARG:token'
+stdout 'ARG:--auth-token'
+stdout 'ARG:mytoken'
+
+# --- Script file: --script-path is added with absolute path ---
+exec dhg exec test_script.py
+stdout 'ARG:--mode'
+stdout 'ARG:embedded'
+stdout 'ARG:--script-path'
+stdout 'ARG:--cwd'
+
+# --- Stdin mode (via -): no --script-path arg ---
+stdin test_input.txt
+exec dhg exec -
+stdout 'ARG:--mode'
+stdout 'ARG:embedded'
+! stdout 'ARG:--script-path'
+stdout 'ARG:--cwd'
+
+# --- --verbose outputs diagnostic info to stderr ---
+exec dhg exec --verbose -c "x=1"
+stderr 'Resolved version: 0.35.1'
+stderr 'Venv python:'
+stderr 'Using Java:'
+
+# --- Explicit --version matching an installed mock version ---
+exec dhg exec -c "x=1" --version 0.35.1
+stdout 'ARG:--mode'
+stdout 'ARG:embedded'
+
+# --- Explicit --version for non-installed version fails ---
+! exec dhg exec -c "x=1" --version 0.99.0
+stderr 'finding venv python'
+
+# =============================================================================
+# Embedded fixture files
+# =============================================================================
+
+-- mock/fakejava --
+#!/bin/sh
+echo 'openjdk version "21.0.5" 2024-10-15' >&2
+exit 0
+
+-- mock/fakepython --
+#!/bin/sh
+# Mock python for dhg exec behaviour tests.
+# Handles two call patterns:
+#   1. python -c "import pydeephaven"  -> exit 0 (pydeephaven check)
+#   2. python -c "<runner.py>" <args>  -> print runner args (actual invocation)
+if [ "$2" = "import pydeephaven" ]; then
+  exit 0
+fi
+# Runner invocation: skip -c and the runner script, print remaining args
+shift 2
+for arg in "$@"; do
+  echo "ARG:$arg"
+done
+# Read and discard stdin (user code piped by Go)
+cat > /dev/null 2>&1
+exit 0
+
+-- test_script.py --
+print('from file')
+
+-- test_input.txt --
+print('from stdin')
