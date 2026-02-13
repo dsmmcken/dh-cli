@@ -176,12 +176,12 @@ func (m DoctorScreen) View() string {
 		var symbol string
 		switch c.status {
 		case "ok":
-			symbol = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "#04B575", Dark: "#04B575"}).Render("✓")
+			symbol = lipgloss.NewStyle().Foreground(colorSuccess).Render("✓")
 		case "warning":
-			symbol = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "#FFA500", Dark: "#FFA500"}).Render("⚠")
+			symbol = lipgloss.NewStyle().Foreground(colorWarning).Render("⚠")
 			warnings++
 		case "error":
-			symbol = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "#FF4672", Dark: "#FF4672"}).Render("✗")
+			symbol = lipgloss.NewStyle().Foreground(colorError).Render("✗")
 			errors++
 		}
 		b.WriteString(fmt.Sprintf("  %s %-12s %s\n", symbol, c.name, c.detail))
@@ -189,7 +189,6 @@ func (m DoctorScreen) View() string {
 
 	b.WriteString("\n")
 
-	dim := lipgloss.AdaptiveColor{Light: "#999999", Dark: "#666666"}
 	if errors > 0 {
 		b.WriteString(fmt.Sprintf("  Problems found (%d errors, %d warnings).\n", errors, warnings))
 	} else if warnings > 0 {
@@ -199,7 +198,7 @@ func (m DoctorScreen) View() string {
 	}
 
 	b.WriteString("\n")
-	b.WriteString(lipgloss.NewStyle().Foreground(dim).Render("  r refresh • esc back • q quit"))
+	b.WriteString(lipgloss.NewStyle().Foreground(colorDim).Render("  r refresh • esc back • q quit"))
 
 	return b.String()
 }

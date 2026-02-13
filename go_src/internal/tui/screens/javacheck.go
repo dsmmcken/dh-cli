@@ -99,7 +99,10 @@ func (m JavaCheckScreen) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.result = msg.info
 		m.err = msg.err
 		if msg.info != nil && msg.info.Found {
-			m.options = []string{"Next"}
+			if m.wizard {
+				m.options = []string{"Next"}
+			}
+			// No buttons when accessed from main menu — just status display
 		} else {
 			m.options = []string{"Install Java", "Skip for now"}
 		}
@@ -187,9 +190,6 @@ func (m JavaCheckScreen) View() string {
 		return b.String()
 	}
 
-	primary := lipgloss.AdaptiveColor{Light: "#874BFD", Dark: "#7D56F4"}
-	dim := lipgloss.AdaptiveColor{Light: "#999999", Dark: "#666666"}
-
 	if m.result != nil && m.result.Found {
 		b.WriteString(fmt.Sprintf("  ✓ Java %s found\n", m.result.Version))
 		b.WriteString(fmt.Sprintf("    %s (%s)\n\n", m.result.Path, m.result.Source))
@@ -202,7 +202,7 @@ func (m JavaCheckScreen) View() string {
 
 	for i, opt := range m.options {
 		if i == m.cursor {
-			b.WriteString(lipgloss.NewStyle().Foreground(primary).Bold(true).Render("  > " + opt))
+			b.WriteString(lipgloss.NewStyle().Foreground(colorPrimary).Bold(true).Render("  > " + opt))
 		} else {
 			b.WriteString("    " + opt)
 		}
@@ -210,12 +210,15 @@ func (m JavaCheckScreen) View() string {
 	}
 
 	b.WriteString("\n")
-	helpParts := []string{"enter continue"}
+	var helpParts []string
+	if len(m.options) > 0 {
+		helpParts = append(helpParts, "enter continue")
+	}
 	if !m.wizard {
 		helpParts = append(helpParts, "esc back")
 	}
 	helpParts = append(helpParts, "q quit")
-	b.WriteString(lipgloss.NewStyle().Foreground(dim).Render("  " + strings.Join(helpParts, " • ")))
+	b.WriteString(lipgloss.NewStyle().Foreground(colorDim).Render("  " + strings.Join(helpParts, " • ")))
 
 	return b.String()
 }

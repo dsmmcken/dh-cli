@@ -128,8 +128,7 @@ func (m InstallProgressScreen) View() string {
 	if m.done {
 		if m.err != nil {
 			b.WriteString(fmt.Sprintf("  Error: %s\n\n", m.err))
-			dim := lipgloss.AdaptiveColor{Light: "#999999", Dark: "#666666"}
-			b.WriteString(lipgloss.NewStyle().Foreground(dim).Render("  Press any key to exit"))
+			b.WriteString(lipgloss.NewStyle().Foreground(colorDim).Render("  Press any key to exit"))
 		}
 		return b.String()
 	}

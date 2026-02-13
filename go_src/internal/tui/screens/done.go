@@ -41,20 +41,17 @@ func (m DoneScreen) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m DoneScreen) View() string {
 	var b strings.Builder
 
-	primary := lipgloss.AdaptiveColor{Light: "#874BFD", Dark: "#7D56F4"}
-	dim := lipgloss.AdaptiveColor{Light: "#999999", Dark: "#666666"}
-
 	b.WriteString("  ✓ Setup Complete\n\n")
 	b.WriteString(fmt.Sprintf("  Deephaven %s installed and set as default.\n\n", m.version))
 
 	b.WriteString("  Quick start:\n")
-	b.WriteString(lipgloss.NewStyle().Foreground(dim).Render("    dhg versions       Manage versions") + "\n")
-	b.WriteString(lipgloss.NewStyle().Foreground(dim).Render("    dhg list           See running servers") + "\n")
-	b.WriteString(lipgloss.NewStyle().Foreground(dim).Render("    dhg doctor         Check environment") + "\n\n")
+	b.WriteString(lipgloss.NewStyle().Foreground(colorDim).Render("    dhg versions       Manage versions") + "\n")
+	b.WriteString(lipgloss.NewStyle().Foreground(colorDim).Render("    dhg list           See running servers") + "\n")
+	b.WriteString(lipgloss.NewStyle().Foreground(colorDim).Render("    dhg doctor         Check environment") + "\n\n")
 
-	b.WriteString(lipgloss.NewStyle().Foreground(primary).Bold(true).Render("  > Done"))
+	b.WriteString(lipgloss.NewStyle().Foreground(colorPrimary).Bold(true).Render("  > Done"))
 	b.WriteString("\n\n")
-	b.WriteString(lipgloss.NewStyle().Foreground(dim).Render("  enter finish • q quit"))
+	b.WriteString(lipgloss.NewStyle().Foreground(colorDim).Render("  enter finish • q quit"))
 
 	return b.String()
 }

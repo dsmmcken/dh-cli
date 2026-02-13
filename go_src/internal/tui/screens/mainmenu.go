@@ -165,7 +165,7 @@ func (m MainMenu) View() string {
 
 	if showLogo {
 		logo := lipgloss.NewStyle().
-			Foreground(lipgloss.AdaptiveColor{Light: "#874BFD", Dark: "#7D56F4"}).
+			Foreground(colorPrimary).
 			Render(components.Logo)
 		b.WriteString(logo)
 		b.WriteString("\n\n")
@@ -174,23 +174,20 @@ func (m MainMenu) View() string {
 	// Status line
 	b.WriteString("  ")
 	b.WriteString(lipgloss.NewStyle().
-		Foreground(lipgloss.AdaptiveColor{Light: "#999999", Dark: "#666666"}).
+		Foreground(colorDim).
 		Render(m.status))
 	b.WriteString("\n\n")
 
 	// Menu items
-	primary := lipgloss.AdaptiveColor{Light: "#874BFD", Dark: "#7D56F4"}
-	dim := lipgloss.AdaptiveColor{Light: "#999999", Dark: "#666666"}
-
 	for i, item := range m.items {
 		if i == m.cursor {
-			b.WriteString(lipgloss.NewStyle().Foreground(primary).Bold(true).Render("  > " + item.title))
+			b.WriteString(lipgloss.NewStyle().Foreground(colorPrimary).Bold(true).Render("  > " + item.title))
 		} else {
 			b.WriteString("    " + item.title)
 		}
 		b.WriteString("\n")
 		if showDesc {
-			b.WriteString(lipgloss.NewStyle().Foreground(dim).Render("    " + item.desc))
+			b.WriteString(lipgloss.NewStyle().Foreground(colorDim).Render("    " + item.desc))
 			b.WriteString("\n")
 		}
 		b.WriteString("\n")

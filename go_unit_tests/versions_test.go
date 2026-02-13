@@ -43,6 +43,12 @@ func TestSortVersionsDesc(t *testing.T) {
 	assert.Equal(t, []string{"10.0.0", "2.1.0", "2.0.0", "1.0.0", "0.36.1", "0.4.0"}, vs)
 }
 
+func TestSortVersionsDescTwoComponent(t *testing.T) {
+	vs := []string{"0.40.9", "41.0", "41.1", "0.39.8"}
+	versions.SortVersionsDesc(vs)
+	assert.Equal(t, []string{"41.1", "41.0", "0.40.9", "0.39.8"}, vs)
+}
+
 func TestSortVersionsDescEmpty(t *testing.T) {
 	var vs []string
 	versions.SortVersionsDesc(vs)
@@ -65,6 +71,74 @@ func TestParsePyPIResponse(t *testing.T) {
 	vs, err := versions.ParsePyPIResponse(data, 0)
 	require.NoError(t, err)
 	assert.Equal(t, []string{"0.37.0", "0.36.1", "0.36.0"}, vs)
+}
+
+func TestParsePyPIResponseTwoComponentVersions(t *testing.T) {
+	resp := map[string]any{
+		"releases": map[string]any{
+			"0.40.9":   []any{},
+			"41.0":     []any{}, // 2-component version
+			"41.1":     []any{}, // 2-component version
+			"41.2a1":   []any{}, // pre-release, should be filtered
+			"not-real": []any{}, // invalid, should be filtered
+		},
+	}
+	data, err := json.Marshal(resp)
+	require.NoError(t, err)
+
+	vs, err := versions.ParsePyPIResponse(data, 0)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"41.1", "41.0", "0.40.9"}, vs)
+}
+
+func TestParsePyPIResponseWithDates(t *testing.T) {
+	resp := map[string]any{
+		"releases": map[string]any{
+			"41.1": []any{
+				map[string]any{"upload_time_iso_8601": "2026-01-29T12:00:00Z"},
+			},
+			"41.0": []any{
+				map[string]any{"upload_time_iso_8601": "2026-01-06T08:30:00Z"},
+			},
+			"0.40.9": []any{}, // no files, no date
+		},
+	}
+	data, err := json.Marshal(resp)
+	require.NoError(t, err)
+
+	vs, err := versions.ParsePyPIResponseWithDates(data, 0)
+	require.NoError(t, err)
+	require.Len(t, vs, 3)
+	assert.Equal(t, "41.1", vs[0].Version)
+	assert.Equal(t, "2026-01-29", vs[0].Date)
+	assert.Equal(t, "41.0", vs[1].Version)
+	assert.Equal(t, "2026-01-06", vs[1].Date)
+	assert.Equal(t, "0.40.9", vs[2].Version)
+	assert.Equal(t, "", vs[2].Date)
+}
+
+func TestParsePyPIResponseWithDatesLimit(t *testing.T) {
+	resp := map[string]any{
+		"releases": map[string]any{
+			"41.1": []any{
+				map[string]any{"upload_time_iso_8601": "2026-01-29T12:00:00Z"},
+			},
+			"41.0": []any{
+				map[string]any{"upload_time_iso_8601": "2026-01-06T08:30:00Z"},
+			},
+			"0.40.9": []any{
+				map[string]any{"upload_time_iso_8601": "2026-01-28T10:00:00Z"},
+			},
+		},
+	}
+	data, err := json.Marshal(resp)
+	require.NoError(t, err)
+
+	vs, err := versions.ParsePyPIResponseWithDates(data, 2)
+	require.NoError(t, err)
+	require.Len(t, vs, 2)
+	assert.Equal(t, "41.1", vs[0].Version)
+	assert.Equal(t, "41.0", vs[1].Version)
 }
 
 func TestParsePyPIResponseWithLimit(t *testing.T) {

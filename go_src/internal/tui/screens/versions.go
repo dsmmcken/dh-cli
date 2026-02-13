@@ -12,47 +12,56 @@ import (
 	"github.com/dsmmcken/dh-cli/go_src/internal/versions"
 )
 
-type versionsListLoadedMsg struct {
-	installed []versions.InstalledVersion
-	dflt      string
-	err       error
+// VersionEntry represents a single version row in the combined list.
+type VersionEntry struct {
+	Version   string
+	Installed bool
+	IsDefault bool
+	DateStr   string // PyPI release date (YYYY-MM-DD), empty if unknown
+}
+
+// VersionsListLoadedMsg is the message sent when version data finishes loading.
+// Exported for testing.
+type VersionsListLoadedMsg struct {
+	Entries []VersionEntry
+	Dflt    string
+	Err     error
 }
 
 type versionsKeyMap struct {
 	Up        key.Binding
 	Down      key.Binding
-	SetDflt   key.Binding
+	Enter     key.Binding
+	Install   key.Binding
 	Uninstall key.Binding
-	Add       key.Binding
-	Remote    key.Binding
 	Help      key.Binding
 	Back      key.Binding
 	Quit      key.Binding
 }
 
 func (k versionsKeyMap) ShortHelp() []key.Binding {
-	return []key.Binding{k.Up, k.Down, k.SetDflt, k.Uninstall, k.Help, k.Back}
+	return []key.Binding{k.Up, k.Down, k.Enter, k.Install, k.Uninstall, k.Help, k.Back}
 }
 
 func (k versionsKeyMap) FullHelp() [][]key.Binding {
 	return [][]key.Binding{
 		{k.Up, k.Down},
-		{k.SetDflt, k.Uninstall, k.Add, k.Remote},
+		{k.Enter, k.Install, k.Uninstall},
 		{k.Help, k.Back, k.Quit},
 	}
 }
 
 type VersionsScreen struct {
-	keys      versionsKeyMap
-	help      help.Model
-	installed []versions.InstalledVersion
-	dflt      string
-	cursor    int
-	loading   bool
-	err       error
-	dhgHome   string
-	width     int
-	height    int
+	keys    versionsKeyMap
+	help    help.Model
+	entries []VersionEntry
+	dflt    string
+	cursor  int
+	loading bool
+	err     error
+	dhgHome string
+	width   int
+	height  int
 }
 
 func NewVersionsScreen(dhgHome string) VersionsScreen {
@@ -60,10 +69,9 @@ func NewVersionsScreen(dhgHome string) VersionsScreen {
 		keys: versionsKeyMap{
 			Up:        key.NewBinding(key.WithKeys("up", "k"), key.WithHelp("↑/k", "up")),
 			Down:      key.NewBinding(key.WithKeys("down", "j"), key.WithHelp("↓/j", "down")),
-			SetDflt:   key.NewBinding(key.WithKeys("d"), key.WithHelp("d", "default")),
-			Uninstall: key.NewBinding(key.WithKeys("x"), key.WithHelp("x", "uninstall")),
-			Add:       key.NewBinding(key.WithKeys("a"), key.WithHelp("a", "add new")),
-			Remote:    key.NewBinding(key.WithKeys("r"), key.WithHelp("r", "toggle remote")),
+			Enter:     key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "set default")),
+			Install:   key.NewBinding(key.WithKeys("i"), key.WithHelp("i", "install")),
+			Uninstall: key.NewBinding(key.WithKeys("u"), key.WithHelp("u", "uninstall")),
 			Help:      key.NewBinding(key.WithKeys("?"), key.WithHelp("?", "more")),
 			Back:      key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "back")),
 			Quit:      key.NewBinding(key.WithKeys("q", "ctrl+c"), key.WithHelp("q", "quit")),
@@ -78,6 +86,16 @@ func (m VersionsScreen) Init() tea.Cmd {
 	return m.loadVersions()
 }
 
+// Entries returns the combined version entries (for testing).
+func (m VersionsScreen) Entries() []VersionEntry {
+	return m.entries
+}
+
+// Cursor returns the current cursor position (for testing).
+func (m VersionsScreen) Cursor() int {
+	return m.cursor
+}
+
 func (m VersionsScreen) loadVersions() tea.Cmd {
 	dhgHome := m.dhgHome
 	return func() tea.Msg {
@@ -86,9 +104,58 @@ func (m VersionsScreen) loadVersions() tea.Cmd {
 		if cfg != nil {
 			dflt = cfg.DefaultVersion
 		}
+
 		installed, err := versions.ListInstalled(dhgHome)
-		return versionsListLoadedMsg{installed: installed, dflt: dflt, err: err}
+		if err != nil {
+			return VersionsListLoadedMsg{Err: err}
+		}
+
+		remote, remoteErr := versions.FetchRemoteVersionsWithDates(20)
+		if remoteErr != nil {
+			return VersionsListLoadedMsg{Err: remoteErr}
+		}
+
+		entries := MergeVersions(remote, installed, dflt)
+		return VersionsListLoadedMsg{Entries: entries, Dflt: dflt}
 	}
+}
+
+// MergeVersions builds a combined list from remote versions and local installs.
+// Remote versions form the base list (already sorted descending). Installed
+// versions that don't appear in the remote list are prepended.
+func MergeVersions(remote []versions.RemoteVersion, installed []versions.InstalledVersion, dflt string) []VersionEntry {
+	installedSet := make(map[string]bool, len(installed))
+	for _, iv := range installed {
+		installedSet[iv.Version] = true
+	}
+
+	seen := make(map[string]bool, len(remote))
+	var entries []VersionEntry
+
+	for _, rv := range remote {
+		seen[rv.Version] = true
+		e := VersionEntry{Version: rv.Version, DateStr: rv.Date}
+		if installedSet[rv.Version] {
+			e.Installed = true
+		}
+		if rv.Version == dflt {
+			e.IsDefault = true
+		}
+		entries = append(entries, e)
+	}
+
+	// Prepend any installed versions not in remote (e.g. yanked or very old).
+	var extra []VersionEntry
+	for _, iv := range installed {
+		if !seen[iv.Version] {
+			e := VersionEntry{Version: iv.Version, Installed: true}
+			if iv.Version == dflt {
+				e.IsDefault = true
+			}
+			extra = append(extra, e)
+		}
+	}
+	return append(extra, entries...)
 }
 
 func (m VersionsScreen) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -99,28 +166,60 @@ func (m VersionsScreen) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.help.Width = msg.Width
 		return m, nil
 
-	case versionsListLoadedMsg:
+	case VersionsListLoadedMsg:
 		m.loading = false
-		m.installed = msg.installed
-		m.dflt = msg.dflt
-		m.err = msg.err
+		m.entries = msg.Entries
+		m.dflt = msg.Dflt
+		m.err = msg.Err
 		return m, nil
 
 	case tea.KeyMsg:
+		if m.loading {
+			if key.Matches(msg, m.keys.Quit) {
+				return m, tea.Quit
+			}
+			return m, nil
+		}
+
 		switch {
 		case key.Matches(msg, m.keys.Up):
 			if m.cursor > 0 {
 				m.cursor--
 			}
 		case key.Matches(msg, m.keys.Down):
-			if m.cursor < len(m.installed)-1 {
+			if m.cursor < len(m.entries)-1 {
 				m.cursor++
 			}
-		case key.Matches(msg, m.keys.SetDflt):
-			if len(m.installed) > 0 {
-				v := m.installed[m.cursor].Version
-				_ = config.Set("default_version", v)
-				m.dflt = v
+		case key.Matches(msg, m.keys.Enter):
+			if len(m.entries) > 0 {
+				e := m.entries[m.cursor]
+				if e.Installed {
+					// Already installed: just set as default
+					_ = config.Set("default_version", e.Version)
+					m.dflt = e.Version
+					for i := range m.entries {
+						m.entries[i].IsDefault = m.entries[i].Version == e.Version
+					}
+				} else {
+					// Not installed: install then set as default
+					return m, pushScreen(NewInstallProgressScreen(m.dhgHome, e.Version))
+				}
+			}
+		case key.Matches(msg, m.keys.Install):
+			if len(m.entries) > 0 && !m.entries[m.cursor].Installed {
+				return m, pushScreen(NewInstallProgressScreen(m.dhgHome, m.entries[m.cursor].Version))
+			}
+		case key.Matches(msg, m.keys.Uninstall):
+			if len(m.entries) > 0 && m.entries[m.cursor].Installed {
+				v := m.entries[m.cursor].Version
+				_ = versions.Uninstall(m.dhgHome, v)
+				m.entries[m.cursor].Installed = false
+				m.entries[m.cursor].DateStr = ""
+				if m.entries[m.cursor].IsDefault {
+					m.entries[m.cursor].IsDefault = false
+					m.dflt = ""
+					_ = config.Set("default_version", "")
+				}
 			}
 		case key.Matches(msg, m.keys.Help):
 			m.help.ShowAll = !m.help.ShowAll
@@ -136,7 +235,7 @@ func (m VersionsScreen) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m VersionsScreen) View() string {
 	var b strings.Builder
 
-	b.WriteString("  Installed Versions\n\n")
+	b.WriteString("  Versions\n\n")
 
 	if m.loading {
 		b.WriteString("  Loading...\n")
@@ -148,29 +247,39 @@ func (m VersionsScreen) View() string {
 		return b.String()
 	}
 
-	primary := lipgloss.AdaptiveColor{Light: "#874BFD", Dark: "#7D56F4"}
-	dim := lipgloss.AdaptiveColor{Light: "#999999", Dark: "#666666"}
-
-	if len(m.installed) == 0 {
-		b.WriteString("  No versions installed.\n")
-		b.WriteString(lipgloss.NewStyle().Foreground(dim).Render("  Press 'a' to add a version."))
-		b.WriteString("\n")
+	if len(m.entries) == 0 {
+		b.WriteString("  No versions available.\n")
 	} else {
-		for i, v := range m.installed {
+		// Find widest version string for alignment.
+		maxLen := 0
+		for _, e := range m.entries {
+			if len(e.Version) > maxLen {
+				maxLen = len(e.Version)
+			}
+		}
+
+		for i, e := range m.entries {
 			marker := "  "
-			if v.Version == m.dflt {
+			if e.IsDefault {
 				marker = "★ "
 			}
-			label := fmt.Sprintf("%s%s", marker, v.Version)
-			if !v.InstalledAt.IsZero() {
-				label += "   " + lipgloss.NewStyle().Foreground(dim).Render("installed "+v.InstalledAt.Format("2006-01-02"))
+			label := fmt.Sprintf("%s%-*s", marker, maxLen, e.Version)
+			if e.IsDefault {
+				label += "  " + lipgloss.NewStyle().Foreground(colorPrimary).Render("default")
+			} else {
+				label += "  " + strings.Repeat(" ", len("default"))
 			}
-			if v.Version == m.dflt {
-				label += " " + lipgloss.NewStyle().Foreground(dim).Render("default")
+			if e.Installed {
+				label += "  " + lipgloss.NewStyle().Foreground(colorSuccess).Render("installed")
+			} else {
+				label += "  " + strings.Repeat(" ", len("installed"))
+			}
+			if e.DateStr != "" {
+				label += "  " + lipgloss.NewStyle().Foreground(colorDim).Render(e.DateStr)
 			}
 
 			if i == m.cursor {
-				b.WriteString(lipgloss.NewStyle().Foreground(primary).Bold(true).Render("  > " + label))
+				b.WriteString(lipgloss.NewStyle().Foreground(colorPrimary).Bold(true).Render("  > " + label))
 			} else {
 				b.WriteString("    " + label)
 			}

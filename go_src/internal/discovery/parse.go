@@ -102,6 +102,9 @@ func ParseLsofOutput(content string) []Server {
 				continue
 			}
 			source := classifyCmdline(currentComm)
+			if source == "" {
+				continue
+			}
 			servers = append(servers, Server{
 				Port:   port,
 				PID:    currentPID,

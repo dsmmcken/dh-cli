@@ -98,9 +98,7 @@ func (m ConfigScreen) View() string {
 		return b.String()
 	}
 
-	dim := lipgloss.AdaptiveColor{Light: "#999999", Dark: "#666666"}
-
-	b.WriteString(fmt.Sprintf("  Config file: %s\n\n", lipgloss.NewStyle().Foreground(dim).Render(m.cfgPath)))
+	b.WriteString(fmt.Sprintf("  Config file: %s\n\n", lipgloss.NewStyle().Foreground(colorDim).Render(m.cfgPath)))
 
 	if m.cfg != nil {
 		b.WriteString(fmt.Sprintf("  default_version:        %s\n", valueOrNone(m.cfg.DefaultVersion)))
@@ -113,9 +111,9 @@ func (m ConfigScreen) View() string {
 	}
 
 	b.WriteString("\n")
-	b.WriteString(lipgloss.NewStyle().Foreground(dim).Render("  Use 'dhg config set <key> <value>' to modify settings."))
+	b.WriteString(lipgloss.NewStyle().Foreground(colorDim).Render("  Use 'dhg config set <key> <value>' to modify settings."))
 	b.WriteString("\n\n")
-	b.WriteString(lipgloss.NewStyle().Foreground(dim).Render("  esc back • q quit"))
+	b.WriteString(lipgloss.NewStyle().Foreground(colorDim).Render("  esc back • q quit"))
 
 	return b.String()
 }

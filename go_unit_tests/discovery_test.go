@@ -86,19 +86,18 @@ func TestParseDockerPSOutputNoDeephaven(t *testing.T) {
 }
 
 func TestParseLsofOutput(t *testing.T) {
-	fixture := "p1234\ncjava\nn*:10000\np5678\ncpython3\nn127.0.0.1:8080\n"
+	// Only processes whose comm matches a Deephaven pattern should appear.
+	// "java" alone is not enough — needs "io.deephaven" in cmdline.
+	// "python3" alone is not Deephaven, so it should be filtered out.
+	// "dh-serve" matches the dh serve pattern.
+	fixture := "p1234\ncjava\nn*:10000\np5678\ncpython3\nn127.0.0.1:8080\np9999\ncdh-serve\nn*:10001\n"
 	servers := discovery.ParseLsofOutput(fixture)
-	require.Len(t, servers, 2)
+	require.Len(t, servers, 1)
 
-	assert.Equal(t, 10000, servers[0].Port)
-	assert.Equal(t, 1234, servers[0].PID)
-	assert.Equal(t, "java", servers[0].Source)
-	assert.Equal(t, "java", servers[0].Script)
-
-	assert.Equal(t, 8080, servers[1].Port)
-	assert.Equal(t, 5678, servers[1].PID)
-	assert.Equal(t, "unknown", servers[1].Source)
-	assert.Equal(t, "python3", servers[1].Script)
+	assert.Equal(t, 10001, servers[0].Port)
+	assert.Equal(t, 9999, servers[0].PID)
+	assert.Equal(t, "dh serve", servers[0].Source)
+	assert.Equal(t, "dh-serve", servers[0].Script)
 }
 
 func TestParseLsofOutputEmpty(t *testing.T) {
@@ -114,10 +113,14 @@ func TestClassifyCmdline(t *testing.T) {
 	}{
 		{"dh serve command", "python -m dh serve --port 10000", "dh serve"},
 		{"dh repl command", "python dh repl", "dh repl"},
+		{"dh-serve hyphenated", "dh-serve --port 10000", "dh serve"},
+		{"dh-repl hyphenated", "dh-repl", "dh repl"},
 		{"java deephaven", "java -cp deephaven-server.jar io.deephaven.server.Main", "java"},
-		{"plain java", "java -jar something.jar", "java"},
-		{"unknown process", "nginx: worker process", "unknown"},
-		{"empty cmdline", "", "unknown"},
+		{"plain java not matched", "java -jar something.jar", ""},
+		{"python deephaven", "python -m deephaven_server run", "python"},
+		{"unknown process", "nginx: worker process", ""},
+		{"node process", "node /usr/lib/vscode/server.js", ""},
+		{"empty cmdline", "", ""},
 	}
 
 	for _, tt := range tests {

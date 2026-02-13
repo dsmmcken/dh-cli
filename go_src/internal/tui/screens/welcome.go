@@ -68,7 +68,7 @@ func (m WelcomeScreen) View() string {
 	var b strings.Builder
 
 	logo := lipgloss.NewStyle().
-		Foreground(lipgloss.AdaptiveColor{Light: "#874BFD", Dark: "#7D56F4"}).
+		Foreground(colorPrimary).
 		Render(components.Logo)
 	b.WriteString(logo)
 	b.WriteString("\n\n")
@@ -79,15 +79,10 @@ func (m WelcomeScreen) View() string {
 	b.WriteString("    2. Install a Deephaven engine version\n")
 	b.WriteString("    3. Get you started\n\n")
 
-	selected := lipgloss.NewStyle().
-		Foreground(lipgloss.AdaptiveColor{Light: "#874BFD", Dark: "#7D56F4"}).
-		Bold(true)
-	b.WriteString(selected.Render("  > Get Started"))
+	b.WriteString(lipgloss.NewStyle().Foreground(colorPrimary).Bold(true).Render("  > Get Started"))
 	b.WriteString("\n\n")
 
-	dim := lipgloss.NewStyle().
-		Foreground(lipgloss.AdaptiveColor{Light: "#999999", Dark: "#666666"})
-	b.WriteString(dim.Render("  enter continue • q quit"))
+	b.WriteString(lipgloss.NewStyle().Foreground(colorDim).Render("  enter continue • q quit"))
 
 	return b.String()
 }

@@ -141,16 +141,13 @@ func (m VersionPickerScreen) View() string {
 
 	b.WriteString("  Select a version to install:\n\n")
 
-	primary := lipgloss.AdaptiveColor{Light: "#874BFD", Dark: "#7D56F4"}
-	dim := lipgloss.AdaptiveColor{Light: "#999999", Dark: "#666666"}
-
 	for i, v := range m.versions {
 		label := v
 		if i == 0 {
 			label += "    latest"
 		}
 		if i == m.cursor {
-			b.WriteString(lipgloss.NewStyle().Foreground(primary).Bold(true).Render("  > " + label))
+			b.WriteString(lipgloss.NewStyle().Foreground(colorPrimary).Bold(true).Render("  > " + label))
 		} else {
 			b.WriteString("    " + label)
 		}
@@ -158,7 +155,7 @@ func (m VersionPickerScreen) View() string {
 	}
 
 	b.WriteString("\n")
-	b.WriteString(lipgloss.NewStyle().Foreground(dim).Render("  ↑/k up • ↓/j down • enter install • q quit"))
+	b.WriteString(lipgloss.NewStyle().Foreground(colorDim).Render("  ↑/k up • ↓/j down • enter install • q quit"))
 
 	return b.String()
 }

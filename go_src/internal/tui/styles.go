@@ -3,7 +3,7 @@ package tui
 import "github.com/charmbracelet/lipgloss"
 
 var (
-	ColorPrimary = lipgloss.AdaptiveColor{Light: "#874BFD", Dark: "#7D56F4"}
+	ColorPrimary = lipgloss.AdaptiveColor{Light: "#2F71F2", Dark: "#4A90FF"}
 	ColorSuccess = lipgloss.AdaptiveColor{Light: "#04B575", Dark: "#04B575"}
 	ColorWarning = lipgloss.AdaptiveColor{Light: "#FFA500", Dark: "#FFA500"}
 	ColorError   = lipgloss.AdaptiveColor{Light: "#FF4672", Dark: "#FF4672"}

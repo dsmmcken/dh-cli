@@ -60,6 +60,7 @@ func ClassifyProcess(pid int) string {
 }
 
 // classifyCmdline classifies a process based on its command line string.
+// Returns "" for processes that are not Deephaven-related.
 func classifyCmdline(cmdline string) string {
 	lower := strings.ToLower(cmdline)
 
@@ -69,16 +70,13 @@ func classifyCmdline(cmdline string) string {
 	if strings.Contains(lower, "dh repl") || strings.Contains(lower, "dh-repl") {
 		return "dh repl"
 	}
-	if strings.Contains(lower, "deephaven") && strings.Contains(lower, "java") {
+	if strings.Contains(lower, "java") && strings.Contains(lower, "io.deephaven") {
 		return "java"
 	}
-	if strings.Contains(lower, "java") && strings.Contains(lower, "deephaven") {
-		return "java"
+	if strings.Contains(lower, "deephaven") {
+		return "python"
 	}
-	if strings.Contains(lower, "java") {
-		return "java"
-	}
-	return "unknown"
+	return ""
 }
 
 // ClassifyCmdlineForTest exposes classifyCmdline for unit testing.

@@ -16,12 +16,23 @@ var PyPIURL = "https://pypi.org/pypi/deephaven-server/json"
 // HTTPClient is the HTTP client used for PyPI requests. Exported for test overrides.
 var HTTPClient = http.DefaultClient
 
-// semverRegexp matches versions like 1.2.3, 0.36.1, etc.
-var semverRegexp = regexp.MustCompile(`^\d+\.\d+\.\d+$`)
+// semverRegexp matches versions like 1.2.3, 0.36.1, 41.1, etc. (patch is optional).
+var semverRegexp = regexp.MustCompile(`^\d+\.\d+(\.\d+)?$`)
+
+// RemoteVersion holds a version string and its PyPI release date.
+type RemoteVersion struct {
+	Version string
+	Date    string // "YYYY-MM-DD" or empty
+}
 
 // pypiResponse is the subset of the PyPI JSON response we care about.
 type pypiResponse struct {
 	Releases map[string]json.RawMessage `json:"releases"`
+}
+
+// pypiFile is one file entry inside a release; we only need upload_time_iso_8601.
+type pypiFile struct {
+	UploadTime string `json:"upload_time_iso_8601"`
 }
 
 // FetchRemoteVersions fetches available versions from PyPI, sorted descending by semver.
@@ -64,6 +75,63 @@ func ParsePyPIResponse(data []byte, limit int) ([]string, error) {
 		versions = versions[:limit]
 	}
 	return versions, nil
+}
+
+// FetchRemoteVersionsWithDates fetches versions with their PyPI release dates.
+func FetchRemoteVersionsWithDates(limit int) ([]RemoteVersion, error) {
+	resp, err := HTTPClient.Get(PyPIURL)
+	if err != nil {
+		return nil, fmt.Errorf("fetching PyPI: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("PyPI returned status %d", resp.StatusCode)
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("reading PyPI response: %w", err)
+	}
+
+	return ParsePyPIResponseWithDates(body, limit)
+}
+
+// ParsePyPIResponseWithDates parses a PyPI JSON response and returns sorted versions with dates.
+func ParsePyPIResponseWithDates(data []byte, limit int) ([]RemoteVersion, error) {
+	var pypi pypiResponse
+	if err := json.Unmarshal(data, &pypi); err != nil {
+		return nil, fmt.Errorf("parsing PyPI JSON: %w", err)
+	}
+
+	dateMap := make(map[string]string)
+	var versionStrs []string
+	for v, raw := range pypi.Releases {
+		if !semverRegexp.MatchString(v) {
+			continue
+		}
+		versionStrs = append(versionStrs, v)
+
+		var files []pypiFile
+		if err := json.Unmarshal(raw, &files); err == nil && len(files) > 0 {
+			ts := files[0].UploadTime
+			if len(ts) >= 10 {
+				dateMap[v] = ts[:10]
+			}
+		}
+	}
+
+	SortVersionsDesc(versionStrs)
+
+	if limit > 0 && len(versionStrs) > limit {
+		versionStrs = versionStrs[:limit]
+	}
+
+	result := make([]RemoteVersion, len(versionStrs))
+	for i, v := range versionStrs {
+		result[i] = RemoteVersion{Version: v, Date: dateMap[v]}
+	}
+	return result, nil
 }
 
 // FetchLatestVersion returns the latest version from PyPI.

@@ -2,7 +2,11 @@ package screens
 
 import (
 	"fmt"
+	"os"
+	"os/exec"
+	"runtime"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/bubbles/help"
 	"github.com/charmbracelet/bubbles/key"
@@ -11,10 +15,17 @@ import (
 	"github.com/dsmmcken/dh-cli/go_src/internal/discovery"
 )
 
-type serversLoadedMsg struct {
-	servers []discovery.Server
-	err     error
+const serverPollInterval = 3 * time.Second
+
+// ServersLoadedMsg is the message sent when server discovery completes.
+// Exported for testing.
+type ServersLoadedMsg struct {
+	Servers []discovery.Server
+	Err     error
 }
+
+// ServersPollTickMsg is the periodic poll tick message. Exported for testing.
+type ServersPollTickMsg struct{}
 
 type serversKeyMap struct {
 	Up   key.Binding
@@ -44,6 +55,7 @@ type ServersScreen struct {
 	servers []discovery.Server
 	cursor  int
 	loading bool
+	status  string // transient status message (e.g. "Killed ...", "Opened ...")
 	err     error
 	width   int
 	height  int
@@ -66,14 +78,30 @@ func NewServersScreen() ServersScreen {
 }
 
 func (m ServersScreen) Init() tea.Cmd {
-	return discoverServers()
+	return tea.Batch(discoverServers(), pollServersTick())
+}
+
+// Servers returns the current server list (for testing).
+func (m ServersScreen) Servers() []discovery.Server {
+	return m.servers
+}
+
+// Status returns the current status message (for testing).
+func (m ServersScreen) Status() string {
+	return m.status
 }
 
 func discoverServers() tea.Cmd {
 	return func() tea.Msg {
 		servers, err := discovery.Discover()
-		return serversLoadedMsg{servers: servers, err: err}
+		return ServersLoadedMsg{Servers: servers, Err: err}
 	}
+}
+
+func pollServersTick() tea.Cmd {
+	return tea.Tick(serverPollInterval, func(_ time.Time) tea.Msg {
+		return ServersPollTickMsg{}
+	})
 }
 
 func (m ServersScreen) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -84,13 +112,27 @@ func (m ServersScreen) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.help.Width = msg.Width
 		return m, nil
 
-	case serversLoadedMsg:
+	case ServersLoadedMsg:
 		m.loading = false
-		m.servers = msg.servers
-		m.err = msg.err
+		m.servers = msg.Servers
+		m.err = msg.Err
+		// Clamp cursor if the list shrunk
+		if m.cursor >= len(m.servers) {
+			m.cursor = max(0, len(m.servers)-1)
+		}
 		return m, nil
 
+	case ServersPollTickMsg:
+		return m, tea.Batch(discoverServers(), pollServersTick())
+
 	case tea.KeyMsg:
+		if m.loading {
+			if key.Matches(msg, m.keys.Quit) {
+				return m, tea.Quit
+			}
+			return m, nil
+		}
+
 		switch {
 		case key.Matches(msg, m.keys.Up):
 			if m.cursor > 0 {
@@ -99,6 +141,24 @@ func (m ServersScreen) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case key.Matches(msg, m.keys.Down):
 			if m.cursor < len(m.servers)-1 {
 				m.cursor++
+			}
+		case key.Matches(msg, m.keys.Kill):
+			if len(m.servers) > 0 {
+				s := m.servers[m.cursor]
+				if err := discovery.Kill(s.Port); err != nil {
+					m.status = fmt.Sprintf("Error: %s", err)
+				} else {
+					m.status = fmt.Sprintf("Killed server on port %d", s.Port)
+				}
+				// Refresh immediately after kill
+				return m, discoverServers()
+			}
+		case key.Matches(msg, m.keys.Open):
+			if len(m.servers) > 0 {
+				s := m.servers[m.cursor]
+				url := fmt.Sprintf("http://localhost:%d", s.Port)
+				openBrowser(url)
+				m.status = fmt.Sprintf("Opened %s", url)
 			}
 		case key.Matches(msg, m.keys.Help):
 			m.help.ShowAll = !m.help.ShowAll
@@ -114,7 +174,7 @@ func (m ServersScreen) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m ServersScreen) View() string {
 	var b strings.Builder
 
-	b.WriteString("  Running Servers\n\n")
+	b.WriteString("  Running Deephaven Servers\n\n")
 
 	if m.loading {
 		b.WriteString("  Discovering...\n")
@@ -128,11 +188,8 @@ func (m ServersScreen) View() string {
 		return b.String()
 	}
 
-	primary := lipgloss.AdaptiveColor{Light: "#874BFD", Dark: "#7D56F4"}
-	dim := lipgloss.AdaptiveColor{Light: "#999999", Dark: "#666666"}
-
 	if len(m.servers) == 0 {
-		b.WriteString(lipgloss.NewStyle().Foreground(dim).Render("  No servers found."))
+		b.WriteString(lipgloss.NewStyle().Foreground(colorDim).Render("  No servers found."))
 		b.WriteString("\n")
 	} else {
 		for i, s := range m.servers {
@@ -149,7 +206,7 @@ func (m ServersScreen) View() string {
 			}
 
 			if i == m.cursor {
-				b.WriteString(lipgloss.NewStyle().Foreground(primary).Bold(true).Render("  > " + detail))
+				b.WriteString(lipgloss.NewStyle().Foreground(colorPrimary).Bold(true).Render("  > " + detail))
 			} else {
 				b.WriteString("    " + detail)
 			}
@@ -157,8 +214,36 @@ func (m ServersScreen) View() string {
 		}
 	}
 
+	if m.status != "" {
+		b.WriteString("\n")
+		b.WriteString("  " + lipgloss.NewStyle().Foreground(colorSuccess).Render(m.status))
+		b.WriteString("\n")
+	}
+
 	b.WriteString("\n")
 	b.WriteString(m.help.View(m.keys))
 
 	return b.String()
+}
+
+// openBrowser opens the given URL in the default browser, with WSL support.
+func openBrowser(url string) {
+	if isWSL() {
+		exec.Command("cmd.exe", "/c", "start", url).Start()
+		return
+	}
+	switch runtime.GOOS {
+	case "darwin":
+		exec.Command("open", url).Start()
+	default:
+		exec.Command("xdg-open", url).Start()
+	}
+}
+
+func isWSL() bool {
+	data, err := os.ReadFile("/proc/version")
+	if err != nil {
+		return false
+	}
+	return strings.Contains(strings.ToLower(string(data)), "microsoft")
 }

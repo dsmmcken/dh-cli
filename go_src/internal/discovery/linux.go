@@ -31,6 +31,9 @@ func discoverProcesses() ([]Server, error) {
 				continue
 			}
 			source := ClassifyProcess(pid)
+			if source == "" {
+				continue
+			}
 			cwd := readProcSymlink(pid, "cwd")
 			servers = append(servers, Server{
 				Port:   entry.Port,
