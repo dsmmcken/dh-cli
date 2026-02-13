@@ -1,6 +1,7 @@
 """Main Textual App for the Deephaven REPL."""
 from __future__ import annotations
 
+import logging
 from typing import TYPE_CHECKING
 
 from textual.app import App, ComposeResult
@@ -15,6 +16,8 @@ from deephaven_cli.repl.widgets.sidebar import Sidebar
 
 if TYPE_CHECKING:
     from deephaven_cli.client import DeephavenClient
+
+_NOISY_LOGGERS = ("pydeephaven", "grpc", "grpc._cython", "grpc._channel")
 
 
 class DeephavenREPLApp(App):
@@ -67,6 +70,10 @@ class DeephavenREPLApp(App):
 
         self.executor = CodeExecutor(client)
 
+        self._disconnected = False
+        self._health_timer = None
+        self._saved_log_levels: dict[str, int] = {}
+
     def compose(self) -> ComposeResult:
         yield Header(show_clock=True)
         with Horizontal(id="main-area"):
@@ -81,12 +88,69 @@ class DeephavenREPLApp(App):
         log_panel.log_info(f"Connected to {self.host}:{self.port}")
         self.query_one("#repl-input", InputBar).focus()
 
+        # Suppress pydeephaven/gRPC Python loggers whose output leaks
+        # ANSI codes into the Textual display when the server dies.
+        for name in _NOISY_LOGGERS:
+            lg = logging.getLogger(name)
+            self._saved_log_levels[name] = lg.level
+            lg.setLevel(logging.CRITICAL + 1)
+
+        # Periodic server health check (every 1s for fast detection)
+        self._health_timer = self.set_interval(1.0, self._schedule_health_check)
+
+    # ------------------------------------------------------------------
+    # Server health check
+    # ------------------------------------------------------------------
+
+    def _schedule_health_check(self) -> None:
+        if self._disconnected:
+            return
+        self.run_worker(
+            self._do_health_check,
+            thread=True,
+            exclusive=True,
+            group="health_check",
+        )
+
+    def _do_health_check(self) -> None:
+        """Worker thread: lightweight RPC to verify server is alive."""
+        if self._disconnected:
+            return
+        try:
+            self.client.session.config_service.get_configuration_constants()
+        except Exception:
+            self.call_from_thread(self._handle_disconnection)
+
+    def _handle_disconnection(self) -> None:
+        """Main thread: server is dead — kill gRPC activity and exit."""
+        if self._disconnected:
+            return
+        self._disconnected = True
+
+        if self._health_timer is not None:
+            self._health_timer.stop()
+            self._health_timer = None
+
+        # Stop all gRPC/keep-alive activity immediately
+        self.client.force_disconnect()
+
+        # Restore loggers and exit (like ctrl+c)
+        self._restore_loggers()
+        self.exit(return_code=1)
+
+    # ------------------------------------------------------------------
+    # Command execution
+    # ------------------------------------------------------------------
+
     def on_input_bar_command_submitted(self, event: InputBar.CommandSubmitted) -> None:
         """Handle command submission from the InputBar."""
         code = event.code
 
         if code in ("exit()", "quit()"):
-            self.exit()
+            self.action_quit()
+            return
+
+        if self._disconnected:
             return
 
         output = self.query_one("#output-panel", OutputPanel)
@@ -97,6 +161,9 @@ class DeephavenREPLApp(App):
 
     def _execute_code(self, code: str) -> None:
         """Execute code on the server and update the UI (runs in worker thread)."""
+        if self._disconnected:
+            return
+
         result = self.executor.execute(code)
 
         # Pre-fetch Arrow data for any assigned tables (still in worker thread)
@@ -148,15 +215,23 @@ class DeephavenREPLApp(App):
 
         self.call_from_thread(_update_ui)
 
+    # ------------------------------------------------------------------
+    # Sidebar interaction
+    # ------------------------------------------------------------------
+
     def on_sidebar_variable_clicked(self, event: Sidebar.VariableClicked) -> None:
         """Handle variable click from the sidebar."""
-        # Run in worker thread since it makes server calls
+        if self._disconnected:
+            return
         name = event.name
         type_name = event.type_name
         self.run_worker(lambda: self._show_variable(name, type_name), thread=True)
 
     def _show_variable(self, name: str, type_name: str) -> None:
         """Fetch and display a variable (runs in worker thread)."""
+        if self._disconnected:
+            return
+
         if type_name == "Table":
             arrow_result = self.executor.get_table_arrow(name)
 
@@ -181,3 +256,16 @@ class DeephavenREPLApp(App):
                     output.append_text(f"{name} = {result.result_repr}")
 
             self.call_from_thread(_update)
+
+    # ------------------------------------------------------------------
+    # Quit
+    # ------------------------------------------------------------------
+
+    def _restore_loggers(self) -> None:
+        for name, level in self._saved_log_levels.items():
+            logging.getLogger(name).setLevel(level)
+
+    def action_quit(self) -> None:
+        """Restore logger levels and exit."""
+        self._restore_loggers()
+        self.exit()

@@ -47,11 +47,52 @@ class DeephavenClient:
         )
         return self
 
+    @property
+    def is_connected(self) -> bool:
+        """Check if the client has an active session."""
+        return self._session is not None and self._session.is_connected
+
     def close(self) -> None:
         """Close the client connection."""
         if self._session:
-            self._session.close()
+            try:
+                self._session.close()
+            except Exception:
+                self._force_cleanup_session()
             self._session = None
+
+    def force_disconnect(self) -> None:
+        """Force-disconnect without sending any RPCs.
+
+        Immediately stops the keep-alive daemon thread and closes the gRPC
+        channel. Use this when the server is known to be dead.
+        """
+        if self._session:
+            self._force_cleanup_session()
+            self._session = None
+
+    def _force_cleanup_session(self) -> None:
+        """Stop keep-alive timer and close transport on the current session."""
+        s = self._session
+        if s is None:
+            return
+        s.is_connected = False
+        timer = getattr(s, "_keep_alive_timer", None)
+        if timer is not None:
+            timer.cancel()
+            s._keep_alive_timer = None
+        try:
+            ch = getattr(s, "grpc_channel", None)
+            if ch:
+                ch.close()
+        except Exception:
+            pass
+        try:
+            fc = getattr(s, "_flight_client", None)
+            if fc:
+                fc.close()
+        except Exception:
+            pass
 
     @property
     def session(self) -> Session:

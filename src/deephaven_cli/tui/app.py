@@ -163,9 +163,9 @@ class JavaCheckScreen(Screen):
 
         try:
             download_java()
-            self.call_from_thread(self._java_install_done, None)
+            self.app.call_from_thread(self._java_install_done, None)
         except Exception as e:
-            self.call_from_thread(self._java_install_done, str(e))
+            self.app.call_from_thread(self._java_install_done, str(e))
 
     def _java_install_done(self, error: str | None) -> None:
         status = self.query_one("#java-status", Static)
@@ -229,9 +229,9 @@ class VersionPickerScreen(Screen):
             from deephaven_cli.manager.pypi import fetch_available_versions
 
             versions = fetch_available_versions()[:15]
-            self.call_from_thread(self._populate_versions, versions)
+            self.app.call_from_thread(self._populate_versions, versions)
         except Exception as e:
-            self.call_from_thread(self._version_fetch_error, str(e))
+            self.app.call_from_thread(self._version_fetch_error, str(e))
 
     def _populate_versions(self, versions: list[str]) -> None:
         list_view = self.query_one("#version-list", ListView)
@@ -259,7 +259,12 @@ class VersionPickerScreen(Screen):
 
 
 class InstallProgressScreen(Screen):
-    """Screen 4: Install progress."""
+    """Screen 4: Install progress.
+
+    Args:
+        version: The version to install.
+        pop_count: How many screens to pop on success. 0 = wizard flow (push DoneScreen).
+    """
 
     CSS = """
     InstallProgressScreen {
@@ -282,9 +287,13 @@ class InstallProgressScreen(Screen):
     }
     """
 
-    def __init__(self, version: str) -> None:
+    BINDINGS = [("escape", "go_back_if_done", "Back")]
+
+    def __init__(self, version: str, pop_count: int = 0) -> None:
         super().__init__()
         self.version = version
+        self.pop_count = pop_count
+        self._done = False
 
     def compose(self) -> ComposeResult:
         with Center():
@@ -301,38 +310,47 @@ class InstallProgressScreen(Screen):
         from deephaven_cli.manager.config import get_default_version, set_default_version
         from deephaven_cli.manager.versions import install_version
 
-        steps = [
-            "Creating virtual environment...",
-            "Installing packages...",
-        ]
         step_idx = [0]
 
         def on_progress(msg: str) -> None:
             step_idx[0] += 1
-            self.call_from_thread(self._update_progress, msg, min(step_idx[0] * 30, 90))
+            self.app.call_from_thread(self._update_progress, msg, min(step_idx[0] * 30, 90))
 
         try:
             success = install_version(self.version, on_progress=on_progress)
             if success:
                 if get_default_version() is None:
                     set_default_version(self.version)
-                self.call_from_thread(self._install_done, None)
+                self.app.call_from_thread(self._install_done, None)
             else:
-                self.call_from_thread(self._install_done, "Installation failed")
+                self.app.call_from_thread(self._install_done, "Installation failed")
         except Exception as e:
-            self.call_from_thread(self._install_done, str(e))
+            self.app.call_from_thread(self._install_done, str(e))
 
     def _update_progress(self, message: str, progress: int) -> None:
         self.query_one("#install-status", Static).update(message)
         self.query_one("#install-progress", ProgressBar).update(progress=progress)
 
     def _install_done(self, error: str | None) -> None:
+        self._done = True
         if error:
-            self.query_one("#install-status", Static).update(f"[red]{error}[/red]")
+            self.query_one("#install-status", Static).update(
+                f"[red]{error}[/red]\n[dim]press esc to go back[/dim]"
+            )
             self.query_one("#install-progress", ProgressBar).update(progress=100)
         else:
             self.query_one("#install-progress", ProgressBar).update(progress=100)
-            self.app.push_screen(DoneScreen(self.version))
+            if self.pop_count > 0:
+                for _ in range(self.pop_count):
+                    self.app.pop_screen()
+                if hasattr(self.app.screen, "_refresh"):
+                    self.app.screen._refresh()
+            else:
+                self.app.push_screen(DoneScreen(self.version))
+
+    def action_go_back_if_done(self) -> None:
+        if self._done:
+            self.app.pop_screen()
 
 
 class DoneScreen(Screen):
@@ -437,22 +455,32 @@ class MainMenuScreen(Screen):
     ]
 
     _MENU_ITEMS = [
-        ("repl", "Start REPL"),
-        ("exec", "Execute a script"),
-        ("serve", "Serve a script"),
-        ("versions", "Manage versions"),
-        ("servers", "Running servers"),
-        ("java", "Java"),
-        ("config", "Config"),
-        ("quit", "Quit"),
+        ("repl", "Start REPL", "r"),
+        ("exec", "Execute a script", "e"),
+        ("serve", "Serve a script", "s"),
+        ("versions", "Manage versions", "v"),
+        ("servers", "Running servers", "l"),
+        ("java", "Java", "j"),
+        ("config", "Config", "c"),
+        ("quit", "Quit", "q"),
     ]
+
+    @staticmethod
+    def _menu_row(label: str, key: str) -> "RichTable":
+        from rich.table import Table as RichTable
+
+        t = RichTable(show_header=False, box=None, padding=0, expand=True)
+        t.add_column(ratio=1)
+        t.add_column(justify="right")
+        t.add_row(label, f"[dim]{key}[/dim]")
+        return t
 
     def compose(self) -> ComposeResult:
         with Center():
             with Vertical(id="menu-box"):
                 yield Static("", id="menu-header")
                 yield OptionList(
-                    *[Option(label, id=opt_id) for opt_id, label in self._MENU_ITEMS],
+                    *[Option(self._menu_row(label, key), id=opt_id) for opt_id, label, key in self._MENU_ITEMS],
                     id="menu-list",
                 )
 
@@ -495,6 +523,93 @@ class MainMenuScreen(Screen):
             self.app.exit()
 
 
+class RemoteVersionPickerScreen(Screen):
+    """Pick a remote version to install (launched from VersionsScreen)."""
+
+    CSS = """
+    RemoteVersionPickerScreen {
+        align: center middle;
+    }
+
+    #remote-picker-box {
+        width: 56;
+        height: 70%;
+        border: double $primary;
+        padding: 1 2;
+    }
+
+    #remote-picker-title {
+        width: 100%;
+        text-align: center;
+        margin-bottom: 1;
+    }
+
+    #remote-picker-list {
+        height: 1fr;
+        margin: 0 1;
+    }
+
+    #remote-picker-status {
+        margin-top: 1;
+        width: 100%;
+        text-align: center;
+    }
+    """
+
+    BINDINGS = [
+        ("escape", "go_back", "Back"),
+        ("enter", "select", "Install"),
+    ]
+
+    def compose(self) -> ComposeResult:
+        with Center():
+            with Vertical(id="remote-picker-box"):
+                yield Static("[bold]Install Version[/bold]", id="remote-picker-title")
+                yield OptionList(id="remote-picker-list")
+                yield Static("[dim]Fetching versions...[/dim]", id="remote-picker-status")
+        yield Footer()
+
+    def on_mount(self) -> None:
+        self.run_worker(self._fetch_versions, thread=True)
+
+    async def _fetch_versions(self) -> None:
+        try:
+            from deephaven_cli.manager.pypi import fetch_available_versions
+            from deephaven_cli.manager.versions import list_installed_versions
+
+            available = fetch_available_versions()[:30]
+            installed_set = {v["version"] for v in list_installed_versions()}
+            self.app.call_from_thread(self._populate, available, installed_set)
+        except Exception as e:
+            self.app.call_from_thread(self._fetch_error, str(e))
+
+    def _populate(self, versions: list[str], installed_set: set[str]) -> None:
+        picker_list = self.query_one("#remote-picker-list", OptionList)
+        picker_list.clear_options()
+        for v in versions:
+            if v in installed_set:
+                picker_list.add_option(
+                    Option(f"  {v}  [dim](installed)[/dim]", id=f"v-{v}", disabled=True)
+                )
+            else:
+                label = f"  {v}" + ("  [dim]latest[/dim]" if v == versions[0] else "")
+                picker_list.add_option(Option(label, id=f"v-{v}"))
+        picker_list.focus()
+        self.query_one("#remote-picker-status", Static).update("")
+
+    def _fetch_error(self, error: str) -> None:
+        self.query_one("#remote-picker-status", Static).update(f"[red]Error: {error}[/red]")
+
+    def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
+        option_id = event.option.id or ""
+        if option_id.startswith("v-"):
+            version = option_id[2:]
+            self.app.push_screen(InstallProgressScreen(version, pop_count=2))
+
+    def action_go_back(self) -> None:
+        self.app.pop_screen()
+
+
 class VersionsScreen(Screen):
     """Manage installed versions."""
 
@@ -504,32 +619,51 @@ class VersionsScreen(Screen):
     }
 
     #versions-box {
-        width: 60;
-        height: auto;
-        max-height: 80%;
+        width: 62;
+        height: 70%;
         border: double $primary;
-        padding: 2 4;
+        padding: 1 2;
     }
 
-    #versions-box Static {
+    #versions-title {
         width: 100%;
+        text-align: center;
+        margin-bottom: 1;
     }
 
-    #versions-list {
-        margin: 1 0;
+    #version-list {
+        height: 1fr;
+        margin: 0 1;
+    }
+
+    #versions-status {
+        width: 100%;
+        text-align: center;
     }
     """
 
-    BINDINGS = [("escape", "go_back", "Back")]
+    BINDINGS = [
+        ("escape", "go_back", "Back"),
+        ("d", "set_default", "Default"),
+        ("u", "uninstall", "Uninstall"),
+        ("delete", "uninstall", "Uninstall"),
+        ("i", "install_new", "Install"),
+        ("r", "toggle_remote", "Remote"),
+    ]
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._versions: list[dict] = []
+        self._remote_versions: list[str] = []
+        self._show_remote: bool = False
 
     def compose(self) -> ComposeResult:
         with Center():
             with Vertical(id="versions-box"):
-                yield Static("[bold]Installed Versions[/bold]")
-                yield Static("", id="versions-content")
-                yield Static("")
-                with Center():
-                    yield Button("Back", id="btn-back")
+                yield Static("[bold]Installed Versions[/bold]", id="versions-title")
+                yield OptionList(id="version-list")
+                yield Static("", id="versions-status")
+        yield Footer()
 
     def on_mount(self) -> None:
         self._refresh()
@@ -537,22 +671,128 @@ class VersionsScreen(Screen):
     def _refresh(self) -> None:
         from deephaven_cli.manager.versions import list_installed_versions
 
-        installed = list_installed_versions()
-        content = self.query_one("#versions-content", Static)
+        self._versions = list_installed_versions()
+        version_list = self.query_one("#version-list", OptionList)
+        version_list.clear_options()
 
-        if not installed:
-            content.update("[dim]No versions installed.[/dim]\n\nRun: dh install")
+        if not self._versions and not self._show_remote:
+            version_list.add_option(
+                Option("[dim]No versions installed. Press i to install.[/dim]", id="empty", disabled=True)
+            )
             return
 
-        lines = []
-        for info in installed:
-            marker = " [bold](default)[/bold]" if info["is_default"] else ""
-            lines.append(f"  {info['version']}{marker}  [dim]installed {info['installed_date']}[/dim]")
-        content.update("\n".join(lines))
+        for info in self._versions:
+            marker = " (default)" if info["is_default"] else ""
+            label = f"  {info['version']}{marker}  [dim]installed {info['installed_date']}[/dim]"
+            version_list.add_option(Option(label, id=f"installed-{info['version']}"))
 
-    def on_button_pressed(self, event: Button.Pressed) -> None:
-        if event.button.id == "btn-back":
-            self.action_go_back()
+        if self._show_remote and self._remote_versions:
+            version_list.add_option(Option("", id="separator", disabled=True))
+            version_list.add_option(
+                Option("[bold dim]Available from PyPI[/bold dim]", id="remote-header", disabled=True)
+            )
+            for v in self._remote_versions[:20]:
+                version_list.add_option(Option(f"  [dim]{v}[/dim]", id=f"remote-{v}"))
+
+        if version_list.option_count > 0:
+            version_list.highlighted = 0
+        version_list.focus()
+
+    def _get_selected_version(self) -> dict | None:
+        """Return the installed version dict for the highlighted item, or None."""
+        version_list = self.query_one("#version-list", OptionList)
+        highlighted = version_list.highlighted
+        if highlighted is None or highlighted < 0 or highlighted >= len(self._versions):
+            return None
+        return self._versions[highlighted]
+
+    def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
+        option_id = event.option.id or ""
+        if option_id.startswith("remote-"):
+            version = option_id[7:]
+            self.app.push_screen(InstallProgressScreen(version, pop_count=1))
+
+    def action_set_default(self) -> None:
+        version_info = self._get_selected_version()
+        if version_info is None:
+            return
+        from deephaven_cli.manager.config import set_default_version
+
+        version = version_info["version"]
+        set_default_version(version)
+        self.query_one("#versions-status", Static).update(f"[green]{version} set as default[/green]")
+        self._refresh()
+
+    def action_uninstall(self) -> None:
+        version_info = self._get_selected_version()
+        if version_info is None:
+            return
+        version = version_info["version"]
+
+        from deephaven_cli.manager.config import (
+            get_default_version,
+            get_latest_installed_version,
+            load_config,
+            save_config,
+            set_default_version,
+        )
+        from deephaven_cli.manager.versions import uninstall_version
+
+        status = self.query_one("#versions-status", Static)
+
+        if uninstall_version(version):
+            status.update(f"[green]{version} uninstalled[/green]")
+            if get_default_version() == version:
+                latest = get_latest_installed_version()
+                if latest:
+                    set_default_version(latest)
+                else:
+                    config = load_config()
+                    config.pop("default_version", None)
+                    save_config(config)
+        else:
+            status.update(f"[red]{version} not found[/red]")
+
+        self._refresh()
+
+    def action_install_new(self) -> None:
+        self.app.push_screen(RemoteVersionPickerScreen())
+
+    def action_toggle_remote(self) -> None:
+        self._show_remote = not self._show_remote
+        status = self.query_one("#versions-status", Static)
+
+        if self._show_remote:
+            if not self._remote_versions:
+                status.update("[dim]Fetching versions from PyPI...[/dim]")
+                self.run_worker(self._fetch_remote_versions, thread=True)
+                return
+            self._refresh()
+        else:
+            self._remote_versions = []
+            self._refresh()
+            status.update("")
+
+    async def _fetch_remote_versions(self) -> None:
+        try:
+            from deephaven_cli.manager.pypi import fetch_available_versions
+
+            available = fetch_available_versions()
+            installed_set = {v["version"] for v in self._versions}
+            remote_only = [v for v in available if v not in installed_set]
+            self.app.call_from_thread(self._on_remote_fetched, remote_only, None)
+        except Exception as e:
+            self.app.call_from_thread(self._on_remote_fetched, [], str(e))
+
+    def _on_remote_fetched(self, versions: list[str], error: str | None) -> None:
+        status = self.query_one("#versions-status", Static)
+        if error:
+            status.update(f"[red]Failed to fetch: {error}[/red]")
+            self._show_remote = False
+            return
+        self._remote_versions = versions
+        status.update(f"[dim]{len(versions)} versions available from PyPI[/dim]")
+        self._refresh()
 
     def action_go_back(self) -> None:
         self.app.pop_screen()
@@ -568,8 +808,7 @@ class ServersScreen(Screen):
 
     #servers-box {
         width: 62;
-        height: auto;
-        max-height: 80%;
+        height: 70%;
         border: double $primary;
         padding: 1 2;
     }
@@ -581,15 +820,8 @@ class ServersScreen(Screen):
     }
 
     #server-list {
-        height: auto;
-        max-height: 14;
+        height: 1fr;
         margin: 0 1;
-    }
-
-    #servers-hint {
-        margin-top: 1;
-        width: 100%;
-        text-align: center;
     }
 
     #servers-status {
@@ -614,11 +846,8 @@ class ServersScreen(Screen):
             with Vertical(id="servers-box"):
                 yield Static("[bold]Running Servers[/bold]", id="servers-title")
                 yield OptionList(id="server-list")
-                yield Static(
-                    "[dim]enter/o: open browser  k: kill  esc: back[/dim]",
-                    id="servers-hint",
-                )
                 yield Static("", id="servers-status")
+        yield Footer()
 
     def on_mount(self) -> None:
         self._refresh()
@@ -639,6 +868,8 @@ class ServersScreen(Screen):
             label = f":{s.port:<6} pid {s.pid:<7} {s.source}{script}"
             server_list.add_option(Option(label, id=str(s.port)))
 
+        if server_list.option_count > 0:
+            server_list.highlighted = 0
         server_list.focus()
 
     def _get_selected_server(self):
@@ -705,8 +936,7 @@ class JavaStatusScreen(Screen):
                 yield Static("[bold]Java Status[/bold]")
                 yield Static("", id="java-info")
                 yield Static("")
-                with Center():
-                    yield Button("Back", id="btn-back")
+                yield Static("[dim]esc: back[/dim]")
 
     def on_mount(self) -> None:
         from deephaven_cli.manager.java import detect_java
@@ -725,10 +955,6 @@ class JavaStatusScreen(Screen):
                 "[red]No compatible Java found (requires >= 17).[/red]\n\n"
                 "Install with: dh java install"
             )
-
-    def on_button_pressed(self, event: Button.Pressed) -> None:
-        if event.button.id == "btn-back":
-            self.action_go_back()
 
     def action_go_back(self) -> None:
         self.app.pop_screen()
@@ -758,8 +984,7 @@ class ConfigScreen(Screen):
                 yield Static("[bold]Configuration[/bold]")
                 yield Static("", id="config-content")
                 yield Static("")
-                with Center():
-                    yield Button("Back", id="btn-back")
+                yield Static("[dim]esc: back[/dim]")
 
     def on_mount(self) -> None:
         from deephaven_cli.manager.config import load_config
@@ -773,10 +998,6 @@ class ConfigScreen(Screen):
             content.update("\n".join(lines))
         else:
             content.update("[dim]No configuration set.[/dim]\n\nRun: dh config --set KEY VALUE")
-
-    def on_button_pressed(self, event: Button.Pressed) -> None:
-        if event.button.id == "btn-back":
-            self.action_go_back()
 
     def action_go_back(self) -> None:
         self.app.pop_screen()

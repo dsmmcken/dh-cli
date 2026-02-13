@@ -10,8 +10,9 @@ class REPLFooter(Static):
     DEFAULT_CSS = """
     REPLFooter {
         height: 1;
-        background: $accent;
-        color: $text;
+        background: #333333;
+        color: #aaaaaa;
+        margin-top: 1;
         padding: 0 1;
     }
     """

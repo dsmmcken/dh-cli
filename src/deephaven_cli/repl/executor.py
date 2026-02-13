@@ -84,7 +84,13 @@ class CodeExecutor:
     def __init__(self, client: DeephavenClient):
         self.client = client
 
-    def execute(self, code: str) -> ExecutionResult:
+    def execute(
+        self,
+        code: str,
+        *,
+        script_path: str | None = None,
+        cwd: str | None = None,
+    ) -> ExecutionResult:
         """Execute code and return captured output."""
         # Parse code to find assigned variable names
         assigned_names = get_assigned_names(code)
@@ -93,7 +99,7 @@ class CodeExecutor:
         tables_before = set(self.client.tables)
 
         # Build and execute the wrapper script (captures output + creates result table)
-        wrapper = self._build_wrapper(code)
+        wrapper = self._build_wrapper(code, script_path=script_path, cwd=cwd)
 
         try:
             self.client.run_script(wrapper)
@@ -134,60 +140,75 @@ class CodeExecutor:
             assigned_tables=assigned_tables,
         )
 
-    def _build_wrapper(self, code: str) -> str:
+    def _build_wrapper(
+        self,
+        code: str,
+        script_path: str | None = None,
+        cwd: str | None = None,
+    ) -> str:
         """Build the wrapper script that captures output and creates result table."""
         code_repr = repr(code)
 
-        # This script:
-        # 1. Captures stdout/stderr
-        # 2. Executes user code (trying eval first for expressions)
-        # 3. Pickles results and base64 encodes (safe for Deephaven string column)
-        # 4. Creates result table with the encoded data
-        return textwrap.dedent(f'''
-            import io as __dh_io
-            import sys as __dh_sys
-            import pickle as __dh_pickle
-            import base64 as __dh_base64
+        lines: list[str] = []
 
-            __dh_stdout_buf = __dh_io.StringIO()
-            __dh_stderr_buf = __dh_io.StringIO()
-            __dh_orig_stdout = __dh_sys.stdout
-            __dh_orig_stderr = __dh_sys.stderr
-            __dh_sys.stdout = __dh_stdout_buf
-            __dh_sys.stderr = __dh_stderr_buf
-            __dh_result = None
-            __dh_error = None
+        # Optional: set CWD and __file__ so scripts can find adjacent files
+        if cwd is not None:
+            lines.append("import os as __dh_os")
+            lines.append("__dh_orig_cwd = __dh_os.getcwd()")
+            lines.append(f"__dh_os.chdir({repr(cwd)})")
+        if script_path is not None:
+            lines.append(f"__file__ = {repr(script_path)}")
 
-            try:
-                try:
-                    __dh_result = eval({code_repr})
-                except SyntaxError:
-                    exec({code_repr})
-            except Exception as __dh_e:
-                import traceback as __dh_tb
-                __dh_error = __dh_tb.format_exc()
-            finally:
-                __dh_sys.stdout = __dh_orig_stdout
-                __dh_sys.stderr = __dh_orig_stderr
+        lines.append("import io as __dh_io")
+        lines.append("import sys as __dh_sys")
+        lines.append("import pickle as __dh_pickle")
+        lines.append("import base64 as __dh_base64")
+        lines.append("")
+        lines.append("__dh_stdout_buf = __dh_io.StringIO()")
+        lines.append("__dh_stderr_buf = __dh_io.StringIO()")
+        lines.append("__dh_orig_stdout = __dh_sys.stdout")
+        lines.append("__dh_orig_stderr = __dh_sys.stderr")
+        lines.append("__dh_sys.stdout = __dh_stdout_buf")
+        lines.append("__dh_sys.stderr = __dh_stderr_buf")
+        lines.append("__dh_result = None")
+        lines.append("__dh_error = None")
+        lines.append("")
+        lines.append("try:")
+        lines.append("    try:")
+        lines.append(f"        __dh_result = eval({code_repr})")
+        lines.append("    except SyntaxError:")
+        lines.append(f"        exec({code_repr})")
+        lines.append("except Exception as __dh_e:")
+        lines.append("    import traceback as __dh_tb")
+        lines.append("    __dh_error = __dh_tb.format_exc()")
+        lines.append("finally:")
+        lines.append("    __dh_sys.stdout = __dh_orig_stdout")
+        lines.append("    __dh_sys.stderr = __dh_orig_stderr")
+        if cwd is not None:
+            lines.append("    __dh_os.chdir(__dh_orig_cwd)")
+        lines.append("")
+        lines.append("__dh_results_dict = {")
+        lines.append('    "stdout": __dh_stdout_buf.getvalue(),')
+        lines.append('    "stderr": __dh_stderr_buf.getvalue(),')
+        lines.append('    "result_repr": repr(__dh_result) if __dh_result is not None else None,')
+        lines.append('    "error": __dh_error,')
+        lines.append("}")
+        lines.append(
+            '__dh_pickled = __dh_base64.b64encode('
+            '__dh_pickle.dumps(__dh_results_dict)).decode("ascii")'
+        )
+        lines.append("")
+        lines.append("from deephaven import empty_table")
+        lines.append('__dh_result_table = empty_table(1).update('
+                      '[f"data = `{__dh_pickled}`"])')
+        lines.append("")
+        if cwd is not None:
+            lines.append("del __dh_os, __dh_orig_cwd")
+        lines.append("del __dh_io, __dh_sys, __dh_pickle, __dh_base64")
+        lines.append("del __dh_stdout_buf, __dh_stderr_buf, __dh_orig_stdout, __dh_orig_stderr")
+        lines.append("del __dh_result, __dh_error, __dh_results_dict, __dh_pickled")
 
-            # Package results and encode safely
-            __dh_results_dict = {{
-                "stdout": __dh_stdout_buf.getvalue(),
-                "stderr": __dh_stderr_buf.getvalue(),
-                "result_repr": repr(__dh_result) if __dh_result is not None else None,
-                "error": __dh_error,
-            }}
-            __dh_pickled = __dh_base64.b64encode(__dh_pickle.dumps(__dh_results_dict)).decode("ascii")
-
-            # Create result table with encoded data
-            from deephaven import empty_table
-            __dh_result_table = empty_table(1).update([f"data = `{{__dh_pickled}}`"])
-
-            # Clean up wrapper variables (except result table)
-            del __dh_io, __dh_sys, __dh_pickle, __dh_base64
-            del __dh_stdout_buf, __dh_stderr_buf, __dh_orig_stdout, __dh_orig_stderr
-            del __dh_result, __dh_error, __dh_results_dict, __dh_pickled
-        ''').strip()
+        return "\n".join(lines)
 
     def _read_result_table(self) -> dict:
         """Read and decode the pickled results from the table."""

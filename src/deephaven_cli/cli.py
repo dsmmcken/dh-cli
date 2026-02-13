@@ -682,6 +682,20 @@ def run_management_tui() -> int:
 
     result = _run_tui()
     if result == "launch-repl":
+        # Activate the Deephaven version before launching the REPL
+        from deephaven_cli.manager.activate import activate_version
+        from deephaven_cli.manager.config import resolve_version
+
+        version = resolve_version()
+        if version is None:
+            print("Error: No Deephaven version installed.", file=sys.stderr)
+            print("\n  dh install latest    Install the latest version", file=sys.stderr)
+            return EXIT_CONNECTION_ERROR
+        try:
+            activate_version(version)
+        except RuntimeError as e:
+            print(f"Error: {e}", file=sys.stderr)
+            return EXIT_CONNECTION_ERROR
         return run_repl(port=10000, jvm_args=["-Xmx4g"])
     elif result == "launch-serve":
         print("Use: dh serve <script.py>", file=sys.stderr)
@@ -972,6 +986,8 @@ def _run_repl_interactive(client, port: int, vi_mode: bool, host: str | None = N
 
     app = DeephavenREPLApp(client, port=port, vi_mode=vi_mode, host=host)
     app.run()
+    if app.return_code == 1:
+        print("\nServer disconnected.")
 
 
 def _run_repl_fallback(client, port: int, vi_mode: bool, host: str | None = None) -> None:
@@ -1153,13 +1169,25 @@ def run_exec(
         timer.daemon = True
         timer.start()
 
+    # Resolve caller context so scripts can find adjacent files
+    caller_cwd = os.getcwd()
+    abs_script_path = (
+        os.path.abspath(script_path)
+        if script_path and script_path != "-"
+        else None
+    )
+
     def _execute_with_client(client: DeephavenClient) -> int:
         """Execute script with the given client."""
         if verbose:
             print("Executing script...", file=sys.stderr)
 
         executor = CodeExecutor(client)
-        result = executor.execute(script_content)
+        result = executor.execute(
+            script_content,
+            script_path=abs_script_path,
+            cwd=caller_cwd,
+        )
 
         # Cancel timeout now that execution is done
         if timer:
