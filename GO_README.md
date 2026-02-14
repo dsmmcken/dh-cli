@@ -79,6 +79,8 @@ dhg install                   # Install the latest Deephaven version
 dhg versions                  # List installed versions
 dhg doctor                    # Check environment health
 dhg list                      # Show running Deephaven servers
+dhg exec -c "t = empty_table(5)" # Execute Python code
+dhg serve dashboard.py        # Run script and keep server alive
 ```
 
 ---
@@ -149,7 +151,7 @@ dhg versions --limit 20       # Show top 20 remote versions
 | Option | Description | Default |
 |--------|-------------|---------|
 | `--remote` | Also query PyPI for available versions | off |
-| `--limit N` | Number of remote versions to show | 10 |
+| `--limit N` | Number of remote versions to show | 20 |
 | `--all` | Show all remote versions | off |
 
 The default version is marked with `*` in human output or `"default": true` in JSON.
@@ -179,6 +181,63 @@ dhg java install --force      # Force reinstall
 |--------|-------------|---------|
 | `--jdk-version N` | JDK major version to install | `21` |
 | `--force` | Force reinstall even if already present | off |
+
+### `dhg exec` — Execute Python code on a Deephaven server
+
+Runs Python code in batch mode on a Deephaven server. In embedded mode (default), starts a local server automatically. In remote mode (`--host`), connects to an existing server.
+
+Code can be provided via `-c` flag, a script file, or stdin (use `-` for stdin).
+
+```bash
+dhg exec -c "print('hello')"                       # Inline code
+dhg exec script.py                                  # Script file
+echo "print('hi')" | dhg exec -                     # From stdin
+dhg exec -c "from deephaven import empty_table; t = empty_table(5)"  # Table creation
+dhg exec -c "print('remote')" --host remote.example.com             # Remote server
+dhg exec script.py --json                           # JSON output
+```
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `-c CODE` | Python code to execute | |
+| `SCRIPT` | Path to script file (positional arg) | |
+| `--port N` | Server port | `10000` |
+| `--jvm-args ARGS` | JVM arguments (quoted string) | `-Xmx4g` |
+| `--timeout N` | Execution timeout in seconds (0 = none) | `0` |
+| `--no-show-tables` | Do not show table previews | off |
+| `--no-table-meta` | Do not show column types and row counts | off |
+| `--version VERSION` | Deephaven version to use | resolved |
+| `--host HOST` | Remote server host (enables remote mode) | |
+| `--auth-type TYPE` | Authentication type for remote connection | |
+| `--auth-token TOKEN` | Authentication token for remote connection | |
+| `--tls` | Use TLS for remote connection | off |
+| `--tls-ca-cert PATH` | Path to CA certificate for TLS | |
+| `--tls-client-cert PATH` | Path to client certificate for TLS | |
+| `--tls-client-key PATH` | Path to client private key for TLS | |
+
+By default, table previews are shown when tables are created or assigned. The embedded Python runner uses AST-based variable capture, stdout/stderr multiplexing, and exception handling with full tracebacks. Exit code is propagated from user code.
+
+### `dhg serve` — Run script and keep server alive
+
+Runs a script and keeps the Deephaven server running for dashboards, visualizations, and long-running data pipelines.
+
+```bash
+dhg serve dashboard.py                    # Run and open browser
+dhg serve dashboard.py --port 8080        # Custom port
+dhg serve dashboard.py --iframe my_widget # Open browser to iframe URL
+dhg serve dashboard.py --no-browser       # Don't open browser
+```
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `SCRIPT` | Path to script file (required, positional) | |
+| `--port N` | Server port | `10000` |
+| `--jvm-args ARGS` | JVM arguments (quoted string) | `-Xmx4g` |
+| `--no-browser` | Don't open browser automatically | off |
+| `--iframe NAME` | Open browser to iframe URL for the given widget name | |
+| `--version VERSION` | Deephaven version to use | resolved |
+
+Opens the browser automatically when the server is ready. Server runs until Ctrl+C (first signal graceful shutdown, second force kill).
 
 ### `dhg list` — List running Deephaven servers
 
@@ -369,6 +428,7 @@ go_src/                         # Main source module
 │   ├── cmd/                   # Cobra command definitions
 │   ├── config/                # TOML config, .dhgrc, version resolution
 │   ├── discovery/             # Server discovery (linux, darwin, docker)
+│   ├── exec/                  # Code execution engine (embedded Python runner)
 │   ├── java/                  # Java detection, version parsing, install
 │   ├── output/                # JSON/text output, exit codes
 │   ├── tui/                   # Bubbletea TUI app
@@ -383,6 +443,7 @@ go_unit_tests/                  # White-box unit tests
 ├── config_test.go
 ├── discovery_test.go
 ├── doctor_test.go
+├── exec_test.go
 ├── java_test.go
 ├── output_test.go
 ├── tui_test.go
@@ -391,19 +452,25 @@ go_unit_tests/                  # White-box unit tests
 
 go_behaviour_tests/             # Black-box CLI tests
 ├── cli_test.go                # testscript runner
+├── helpers_test.go            # Test helpers
 ├── tui_test.go                # TUI tests (go-expect + vt10x)
 ├── testdata/scripts/          # .txtar test scripts
 │   ├── config.txtar
 │   ├── doctor.txtar
+│   ├── error_codes.txtar
+│   ├── exec.txtar
+│   ├── global_flags.txtar
+│   ├── help.txtar
 │   ├── install.txtar
 │   ├── java.txtar
 │   ├── kill.txtar
 │   ├── list.txtar
+│   ├── serve.txtar
 │   ├── setup.txtar
 │   ├── uninstall.txtar
 │   ├── use.txtar
-│   ├── versions.txtar
-│   └── ...
+│   ├── version.txtar
+│   └── versions.txtar
 └── go.mod
 ```
 
