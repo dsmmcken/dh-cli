@@ -1,0 +1,174 @@
+# =============================================================================
+# serve --help shows usage and all key flags
+# =============================================================================
+exec dhg serve --help
+stdout 'Run a script and keep the Deephaven server running'
+stdout 'SCRIPT'
+stdout '\-\-port'
+stdout '\-\-jvm-args'
+stdout '\-\-no-browser'
+stdout '\-\-iframe'
+stdout '\-\-version'
+! stderr .
+
+# serve appears in root help
+exec dhg --help
+stdout 'serve'
+
+# =============================================================================
+# Input validation (no server/version needed)
+# =============================================================================
+
+# No script argument
+! exec dhg serve
+stderr 'accepts 1 arg'
+
+# Nonexistent script file
+! exec dhg serve nonexistent.py
+stderr 'reading script file'
+
+# =============================================================================
+# Version resolution errors (no installed versions)
+# =============================================================================
+
+# serve with script but no version available
+! exec dhg serve test_script.py
+stderr 'resolving version'
+
+# Explicit --version for a version that has no venv
+! exec dhg serve test_script.py --version 0.35.1
+stderr 'finding venv python'
+
+# =============================================================================
+# Mock-based integration tests
+# Verify argument passing to the Python runner without needing Deephaven.
+# Uses a mock python that prints the runner CLI args and a mock java.
+# =============================================================================
+
+env DHG_VERSION=0.35.1
+env JAVA_HOME=$WORK/fakejava
+mkdir fakejava/bin
+mkdir .dhg/versions/0.35.1/.venv/bin
+cp mock/fakejava fakejava/bin/java
+cp mock/fakepython .dhg/versions/0.35.1/.venv/bin/python
+exec chmod +x fakejava/bin/java
+exec chmod +x .dhg/versions/0.35.1/.venv/bin/python
+
+# --- Basic serve: verify serve mode and default args ---
+exec dhg serve test_script.py
+stdout 'ARG:--mode'
+stdout 'ARG:serve'
+stdout 'ARG:--port'
+stdout 'ARG:10000'
+stdout 'ARG:--jvm-args=-Xmx4g'
+stdout 'ARG:--script-path'
+stdout 'ARG:--cwd'
+stdout 'Server running at http://localhost:10000'
+stdout 'Press Ctrl\+C to stop\.'
+
+# --- --jvm-args passed as single token (same regression guard as exec) ---
+exec dhg serve test_script.py
+stdout 'ARG:--jvm-args=-Xmx4g'
+
+# --- Custom --jvm-args ---
+exec dhg serve test_script.py --jvm-args '-Xmx8g'
+stdout 'ARG:--jvm-args=-Xmx8g'
+
+# --- Custom port ---
+exec dhg serve test_script.py --port 8080
+stdout 'ARG:--port'
+stdout 'ARG:8080'
+stdout 'Server running at http://localhost:8080'
+
+# --- --iframe flag ---
+exec dhg serve test_script.py --iframe my_widget
+stdout 'ARG:--iframe'
+stdout 'ARG:my_widget'
+stdout 'Server running at http://localhost:10000/iframe/widget/\?name=my_widget'
+
+# --- --no-browser (just verify it doesn't crash; browser is tested via Go) ---
+exec dhg serve test_script.py --no-browser
+stdout 'ARG:--mode'
+stdout 'ARG:serve'
+
+# --- --verbose outputs diagnostic info to stderr ---
+exec dhg serve --verbose test_script.py
+stderr 'Resolved version: 0.35.1'
+stderr 'Venv python:'
+stderr 'Using Java:'
+stderr 'Starting Deephaven...'
+
+# --- --quiet suppresses startup message ---
+exec dhg serve --quiet test_script.py
+! stderr 'Starting Deephaven...'
+
+# --- Explicit --version matching installed mock version ---
+exec dhg serve test_script.py --version 0.35.1
+stdout 'ARG:--mode'
+stdout 'ARG:serve'
+
+# --- Explicit --version for non-installed version fails ---
+! exec dhg serve test_script.py --version 0.99.0
+stderr 'finding venv python'
+
+# --- Serve does NOT accept exec-style flags ---
+# No -c flag
+! exec dhg serve -c "print('hello')" test_script.py
+stderr 'unknown.*flag'
+
+# =============================================================================
+# Embedded fixture files
+# =============================================================================
+
+-- mock/fakejava --
+#!/bin/sh
+echo 'openjdk version "21.0.5" 2024-10-15' >&2
+exit 0
+
+-- mock/fakepython --
+#!/bin/sh
+# Mock python for dhg serve behaviour tests.
+# Handles two call patterns:
+#   1. python -c "import pydeephaven"  -> exit 0 (pydeephaven check)
+#   2. python -c "<runner.py>" <args>  -> print runner args + serve output
+if [ "$2" = "import pydeephaven" ]; then
+  exit 0
+fi
+# Runner invocation: skip -c and the runner script, print remaining args
+shift 2
+IS_SERVE=false
+PORT=10000
+IFRAME=""
+for arg in "$@"; do
+  echo "ARG:$arg"
+  case "$arg" in
+    serve) IS_SERVE=true ;;
+  esac
+done
+# Parse port and iframe from args for realistic serve output
+i=0
+prev=""
+for arg in "$@"; do
+  if [ "$prev" = "--port" ]; then
+    PORT="$arg"
+  fi
+  if [ "$prev" = "--iframe" ]; then
+    IFRAME="$arg"
+  fi
+  prev="$arg"
+done
+if [ "$IS_SERVE" = "true" ]; then
+  URL="http://localhost:${PORT}"
+  if [ -n "$IFRAME" ]; then
+    URL="${URL}/iframe/widget/?name=${IFRAME}"
+  fi
+  echo "__DHG_READY__:${URL}"
+  echo "Server running at ${URL}"
+  echo "Press Ctrl+C to stop."
+fi
+# Read and discard stdin (script content piped by Go)
+cat > /dev/null 2>&1
+exit 0
+
+-- test_script.py --
+print('dashboard loaded')

@@ -1,4 +1,4 @@
-"""Embedded runner for dhg exec. Executed via python -c, reads user code from stdin."""
+"""Embedded runner for dhg exec/serve. Executed via python -c, reads user code from stdin."""
 from __future__ import annotations
 
 import argparse
@@ -362,6 +362,90 @@ def _execute_on_server(host: str, port: int, args, code: str, **session_kwargs):
             pass
 
 
+def run_serve(args, code: str):
+    """Start an embedded server, run script, keep server alive until interrupted."""
+    import time
+    from deephaven_server import Server
+
+    # Check port availability and fall back to auto-assign if needed
+    port_to_use = args.port
+    if not _is_port_available(port_to_use):
+        print(f"Port {port_to_use} is in use, finding available port...", file=sys.stderr)
+        port_to_use = 0
+
+    # Suppress JVM/server output
+    original_stdout_fd = os.dup(1)
+    original_stderr_fd = os.dup(2)
+    original_stdout = sys.stdout
+    original_stderr = sys.stderr
+    devnull_fd = os.open(os.devnull, os.O_WRONLY)
+    devnull_file = open(os.devnull, "w")
+    os.dup2(devnull_fd, 1)
+    os.dup2(devnull_fd, 2)
+    os.close(devnull_fd)
+    sys.stdout = devnull_file
+    sys.stderr = devnull_file
+
+    try:
+        server = Server(port=port_to_use, jvm_args=args.jvm_args.split() if args.jvm_args else ["-Xmx4g"])
+        server.start()
+    finally:
+        os.dup2(original_stdout_fd, 1)
+        os.dup2(original_stderr_fd, 2)
+        os.close(original_stdout_fd)
+        os.close(original_stderr_fd)
+        sys.stdout = original_stdout
+        sys.stderr = original_stderr
+        devnull_file.close()
+
+    actual_port = server.port
+
+    # Connect and run script directly (no output capture wrapper)
+    from pydeephaven import Session
+
+    try:
+        session = Session(host="localhost", port=actual_port)
+    except Exception as e:
+        print(f"Error: Failed to connect to server: {e}", file=sys.stderr)
+        return 2
+
+    try:
+        session.run_script(code)
+    except Exception as e:
+        print(f"Error: Script execution failed: {e}", file=sys.stderr)
+        try:
+            session.close()
+        except Exception:
+            pass
+        return 1
+
+    # Build URL
+    url = f"http://localhost:{actual_port}"
+    if args.iframe:
+        url = f"{url}/iframe/widget/?name={args.iframe}"
+
+    # Signal to Go that we're ready (consumed by Go, not shown to user)
+    print(f"__DHG_READY__:{url}", flush=True)
+
+    # User-visible output
+    print(f"Server running at {url}", flush=True)
+    print("Press Ctrl+C to stop.", flush=True)
+
+    # Keep alive until interrupted
+    try:
+        while True:
+            time.sleep(1)
+    except KeyboardInterrupt:
+        print("\nShutting down...", flush=True)
+    finally:
+        try:
+            session.close()
+        except Exception:
+            pass
+
+    return 0
+
+
 def _suggest_backtick_hint(script_content: str, error: str) -> str | None:
     """Check if error might be caused by shell backtick interpretation."""
     query_patterns = ['.where(', '.update(', '.select(', '.view(', '.update_view(']
@@ -397,8 +481,8 @@ def _emit_error(args, message: str, exit_code: int):
 # --- Main ---
 
 def main():
-    parser = argparse.ArgumentParser(description="dhg exec runner")
-    parser.add_argument("--mode", choices=["embedded", "remote"], required=True)
+    parser = argparse.ArgumentParser(description="dhg exec/serve runner")
+    parser.add_argument("--mode", choices=["embedded", "remote", "serve"], required=True)
     parser.add_argument("--port", type=int, default=10000)
     parser.add_argument("--host", default="localhost")
     parser.add_argument("--jvm-args", default="-Xmx4g")
@@ -413,6 +497,7 @@ def main():
     parser.add_argument("--tls-ca-cert", default=None)
     parser.add_argument("--tls-client-cert", default=None)
     parser.add_argument("--tls-client-key", default=None)
+    parser.add_argument("--iframe", default=None)
 
     args = parser.parse_args()
 
@@ -432,7 +517,9 @@ def main():
         sys.exit(0)
 
     try:
-        if args.mode == "embedded":
+        if args.mode == "serve":
+            exit_code = run_serve(args, code)
+        elif args.mode == "embedded":
             exit_code = run_embedded(args, code)
         else:
             exit_code = run_remote(args, code)
