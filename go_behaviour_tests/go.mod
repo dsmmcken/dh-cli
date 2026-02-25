@@ -1,6 +1,6 @@
 module github.com/dsmmcken/dh-cli/go_behaviour_tests
 
-go 1.23.0
+go 1.26.0
 
 require github.com/rogpeppe/go-internal v1.14.1
 

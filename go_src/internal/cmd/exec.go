@@ -24,6 +24,7 @@ var (
 	execTLSCACertFlag     string
 	execTLSClientCertFlag string
 	execTLSClientKeyFlag  string
+	execVMFlag            bool
 )
 
 func addExecCommand(parent *cobra.Command) {
@@ -60,6 +61,7 @@ Examples:
 	flags.StringVar(&execTLSCACertFlag, "tls-ca-cert", "", "Path to CA certificate for TLS")
 	flags.StringVar(&execTLSClientCertFlag, "tls-client-cert", "", "Path to client certificate for TLS")
 	flags.StringVar(&execTLSClientKeyFlag, "tls-client-key", "", "Path to client private key for TLS")
+	flags.BoolVar(&execVMFlag, "vm", false, "Execute in a Firecracker microVM (experimental, Linux only)")
 
 	parent.AddCommand(cmd)
 }
@@ -83,6 +85,7 @@ func runExec(cmd *cobra.Command, args []string) error {
 		TLSCACert:     execTLSCACertFlag,
 		TLSClientCert: execTLSClientCertFlag,
 		TLSClientKey:  execTLSClientKeyFlag,
+		VMMode:        execVMFlag,
 		ConfigDir:     ConfigDir,
 		Stderr:        cmd.ErrOrStderr(),
 		Stdout:        cmd.OutOrStdout(),

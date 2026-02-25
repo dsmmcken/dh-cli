@@ -32,6 +32,8 @@ func NewRootCmd() *cobra.Command {
 	addSetupCommand(cmd)
 	addExecCommand(cmd)
 	addServeCommand(cmd)
+	addReplCommand(cmd)
+	addVMCommands(cmd)
 	return cmd
 }
 

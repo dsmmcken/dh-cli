@@ -57,6 +57,9 @@ type ExecConfig struct {
 	TLSClientCert string
 	TLSClientKey  string
 
+	// VM mode (experimental)
+	VMMode bool
+
 	// Resolved state (populated by Run)
 	ConfigDir string
 	Stderr    io.Writer
@@ -117,6 +120,15 @@ func Run(cfg *ExecConfig) (int, map[string]any, error) {
 		fmt.Fprintf(cfg.Stderr, "Resolved version: %s\n", version)
 	}
 
+	// VM mode: delegate to Firecracker-based execution
+	isRemote := cfg.Host != ""
+	if cfg.VMMode {
+		if isRemote {
+			return output.ExitError, nil, fmt.Errorf("cannot use both --vm and --host flags")
+		}
+		return runVM(cfg, userCode, version, dhgHome)
+	}
+
 	// Find venv python
 	pythonBin, err := FindVenvPython(dhgHome, version)
 	if err != nil {
@@ -134,7 +146,6 @@ func Run(cfg *ExecConfig) (int, map[string]any, error) {
 
 	// Detect Java for embedded mode
 	var javaHome string
-	isRemote := cfg.Host != ""
 	if !isRemote {
 		javaInfo, err := java.Detect(dhgHome)
 		if err != nil {
