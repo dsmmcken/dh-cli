@@ -9,6 +9,8 @@ import (
 	"io"
 	"net"
 	"os"
+	"sort"
+	"sync"
 	"unsafe"
 
 	"golang.org/x/sys/unix"
@@ -23,9 +25,12 @@ const (
 	_UFFDIO_ZEROPAGE = 0xc020aa04
 )
 
-// copyChunkSize is the size of each UFFDIO_COPY request. Larger chunks reduce
-// the number of ioctls (2GB / 256MB = 8 ioctls instead of ~500K page faults).
-const copyChunkSize = 256 * 1024 * 1024
+// copyChunkSize is the size of each UFFDIO_COPY request. 128MB chunks balance
+// ioctl count vs memory bandwidth utilization for parallel copy goroutines.
+const copyChunkSize = 128 * 1024 * 1024
+
+// copyWorkers is the number of parallel goroutines for eager UFFDIO_COPY.
+const copyWorkers = 4
 
 // uffdMsgSize is the size of struct uffd_msg (32 bytes on amd64).
 const uffdMsgSize = 32
@@ -69,22 +74,24 @@ type memRegion struct {
 	PageSizeKiB      uint64 `json:"page_size_kib"` // deprecated, actually bytes despite name
 }
 
-// pageSize returns the effective page size for this region.
-func (r *memRegion) pageSize() uint64 {
-	if r.PageSize > 0 {
-		return r.PageSize
-	}
-	// Fall back to deprecated field (same unit despite the name).
-	if r.PageSizeKiB > 0 {
-		return r.PageSizeKiB
-	}
-	return 4096
-}
-
 // dataExtent describes a contiguous range of non-hole data in the snapshot file.
 type dataExtent struct {
 	offset uint64 // offset in file
 	length uint64 // length of data region
+}
+
+// regionInfo pairs a memory region with its data/hole extent map for the lazy handler.
+type regionInfo struct {
+	region  memRegion
+	extents []dataExtent // sorted by offset
+}
+
+// copyJob is a unit of work for the parallel eager copy pool.
+type copyJob struct {
+	uffdFd  int
+	dst     uint64 // destination in VM address space
+	src     uint64 // source in our mmap
+	length  uint64
 }
 
 // ProbeUffd checks whether the userfaultfd(2) syscall is available on this
@@ -99,9 +106,9 @@ func ProbeUffd() bool {
 	return true
 }
 
-// uffdHandler manages the UFFD socket lifecycle for page population.
-// It eagerly copies data regions via UFFDIO_COPY, then handles page faults
-// on hole regions lazily via a background goroutine.
+// uffdHandler manages the UFFD lifecycle. Data pages are eagerly copied in
+// parallel using bulk UFFDIO_COPY, hole pages are served lazily on demand.
+// The snapshot file is pre-loaded into the page cache to minimize I/O latency.
 type uffdHandler struct {
 	socketPath string
 	memFile    string
@@ -109,10 +116,21 @@ type uffdHandler struct {
 	uffdFd     int       // kept open for VM lifetime; -1 if not yet received
 	done       chan error // signaled when eager population completes (nil = success)
 	cancel     context.CancelFunc
+
+	// Pre-loaded file data (available before Firecracker connects)
+	file     *os.File
+	fileSize uint64
+	mmapData []byte
+	mmapBase uintptr
+
+	// Pre-scanned data extents (computed during preload, used by doPopulate)
+	preExtents []dataExtent // sorted by offset, covering the whole file
+	preSparse  bool         // true if sparse scanning succeeded
+	preWarm    chan struct{} // closed when background page cache warming finishes
 }
 
-// startUffdHandler creates a UDS listener and spawns a goroutine that waits for
-// Firecracker to connect, receives the UFFD fd, and eagerly populates data pages.
+// startUffdHandler creates a UDS listener, pre-loads the snapshot file into
+// the page cache, and spawns a goroutine that handles UFFD population.
 // The socket file exists after this returns (satisfying SDK validation).
 func startUffdHandler(ctx context.Context, socketPath, memFilePath string, stderr io.Writer) (*uffdHandler, error) {
 	// Remove stale socket if present
@@ -134,8 +152,90 @@ func startUffdHandler(ctx context.Context, socketPath, memFilePath string, stder
 		cancel:     cancel,
 	}
 
+	// Pre-load: open file, mmap (no MAP_POPULATE), trigger async readahead.
+	// This overlaps disk I/O with Firecracker's startup (~150ms), so the file
+	// is already partially or fully in the page cache when UFFDIO_COPY starts.
+	if err := h.preload(); err != nil {
+		listener.Close()
+		cancel()
+		return nil, fmt.Errorf("pre-loading snapshot file: %w", err)
+	}
+
 	go h.run(ctx, stderr)
 	return h, nil
+}
+
+// preload opens the snapshot memory file, creates a read-only mmap, pre-scans
+// data extents, and starts warming the page cache — all before Firecracker
+// connects. This overlaps ~150ms of I/O with Firecracker's launch time.
+func (h *uffdHandler) preload() error {
+	f, err := os.Open(h.memFile)
+	if err != nil {
+		return fmt.Errorf("opening: %w", err)
+	}
+
+	fi, err := f.Stat()
+	if err != nil {
+		f.Close()
+		return fmt.Errorf("stat: %w", err)
+	}
+
+	h.file = f
+	h.fileSize = uint64(fi.Size())
+
+	// mmap without MAP_POPULATE — returns immediately, no blocking I/O.
+	data, err := unix.Mmap(int(f.Fd()), 0, int(h.fileSize), unix.PROT_READ, unix.MAP_PRIVATE)
+	if err != nil {
+		f.Close()
+		return fmt.Errorf("mmap: %w", err)
+	}
+	h.mmapData = data
+	h.mmapBase = uintptr(unsafe.Pointer(&data[0]))
+
+	// Request transparent huge pages for the mmap — reduces TLB misses during
+	// UFFDIO_COPY by using 2MB pages instead of 4KB for the source data.
+	unix.Madvise(data, unix.MADV_HUGEPAGE)
+
+	// Trigger non-blocking readahead for the whole file.
+	unix.Fadvise(int(f.Fd()), 0, int64(h.fileSize), unix.FADV_SEQUENTIAL)
+	unix.Madvise(data, unix.MADV_WILLNEED)
+
+	// Pre-scan data extents for the whole file (fast SEEK_HOLE/SEEK_DATA).
+	// This runs now instead of after FC connects, saving ~20-40ms.
+	extents, err := scanDataExtents(f, 0, h.fileSize)
+	if err == nil {
+		h.preExtents = extents
+		h.preSparse = true
+	}
+
+	// Start a background goroutine that forces data pages into page cache by
+	// reading them sequentially. This runs concurrently with FC launch so the
+	// file is warm by the time UFFDIO_COPY starts.
+	h.preWarm = make(chan struct{})
+	go func() {
+		defer close(h.preWarm)
+		// Read only data extents (skip holes) to minimize I/O
+		if h.preSparse && len(h.preExtents) > 0 {
+			buf := make([]byte, 1024*1024) // 1MB read buffer
+			for _, ext := range h.preExtents {
+				for off := ext.offset; off < ext.offset+ext.length; off += uint64(len(buf)) {
+					readLen := ext.offset + ext.length - off
+					if readLen > uint64(len(buf)) {
+						readLen = uint64(len(buf))
+					}
+					f.ReadAt(buf[:readLen], int64(off))
+				}
+			}
+		} else {
+			// Non-sparse: read entire file
+			buf := make([]byte, 1024*1024)
+			for off := int64(0); off < int64(h.fileSize); off += int64(len(buf)) {
+				f.ReadAt(buf, off)
+			}
+		}
+	}()
+
+	return nil
 }
 
 // Wait blocks until eager data population completes or the context is cancelled.
@@ -148,20 +248,28 @@ func (h *uffdHandler) Wait(ctx context.Context) error {
 	}
 }
 
-// Close cleans up the UFFD handler: closes the fd, listener, and removes the socket.
+// Close cleans up the UFFD handler: closes the fd, munmaps, and removes the socket.
 func (h *uffdHandler) Close() error {
 	h.cancel()
 	if h.uffdFd >= 0 {
 		unix.Close(h.uffdFd)
 		h.uffdFd = -1
 	}
+	if h.mmapData != nil {
+		unix.Munmap(h.mmapData)
+		h.mmapData = nil
+	}
+	if h.file != nil {
+		h.file.Close()
+		h.file = nil
+	}
 	h.listener.Close()
 	os.Remove(h.socketPath)
 	return nil
 }
 
-// run is the main handler goroutine. It eagerly populates data pages, then
-// starts a lazy fault handler for hole pages.
+// run is the main handler goroutine. It eagerly copies data pages in parallel,
+// then starts a lazy fault handler for hole pages.
 func (h *uffdHandler) run(ctx context.Context, stderr io.Writer) {
 	h.done <- h.doPopulate(ctx, stderr)
 }
@@ -185,74 +293,153 @@ func (h *uffdHandler) doPopulate(ctx context.Context, stderr io.Writer) error {
 		return fmt.Errorf("Firecracker sent 0 memory regions")
 	}
 
-	// Open the snapshot memory file for sparse scanning and mmap
-	f, err := os.Open(h.memFile)
-	if err != nil {
-		return fmt.Errorf("opening memory file: %w", err)
-	}
-	defer f.Close()
-
-	fi, err := f.Stat()
-	if err != nil {
-		return fmt.Errorf("stat memory file: %w", err)
-	}
-	fileSize := uint64(fi.Size())
-
-	// Hint the kernel about sequential access for readahead
-	unix.Fadvise(int(f.Fd()), 0, int64(fileSize), unix.FADV_SEQUENTIAL)
-
-	data, err := unix.Mmap(int(f.Fd()), 0, int(fileSize), unix.PROT_READ, unix.MAP_PRIVATE|unix.MAP_POPULATE)
-	if err != nil {
-		return fmt.Errorf("mmap memory file: %w", err)
-	}
-	defer unix.Munmap(data)
-
-	mmapBase := uintptr(unsafe.Pointer(&data[0]))
-
-	// Eagerly populate only data regions (non-holes). Hole pages are left
-	// unpopulated and served lazily via the background fault handler.
-	var totalData, totalHoles uint64
-	sparse := false
-	for i, region := range regions {
-		if err := ctx.Err(); err != nil {
-			return err
+	// Use pre-scanned extents from preload (already computed during FC launch).
+	// Map the whole-file extents to per-region extents by clipping.
+	var regionInfos []regionInfo
+	sparse := h.preSparse
+	for _, region := range regions {
+		var extents []dataExtent
+		if sparse {
+			extents = clipExtentsToRegion(h.preExtents, region.Offset, region.Size)
+		} else {
+			// Non-sparse fallback: treat entire region as data
+			extents = []dataExtent{{offset: region.Offset, length: region.Size}}
 		}
+		regionInfos = append(regionInfos, regionInfo{
+			region:  region,
+			extents: extents,
+		})
+	}
 
-		extents, err := scanDataExtents(f, region.Offset, region.Size)
-		if err != nil {
-			// If sparse scanning fails, fall back to copying the entire region.
-			if err := populateRegionFull(uffdFd, region, mmapBase); err != nil {
-				return fmt.Errorf("populating region %d (full): %w", i, err)
+	// Wait for page cache warming to finish (it started during preload,
+	// ~150ms ago — should be done or nearly done by now).
+	<-h.preWarm
+
+	// Build copy jobs from data extents.
+	var jobs []copyJob
+	for _, ri := range regionInfos {
+		base := ri.region.BaseHostVirtAddr
+		regionStart := ri.region.Offset
+		for _, ext := range ri.extents {
+			extEnd := ext.offset + ext.length
+			if extEnd > ri.region.Offset+ri.region.Size {
+				extEnd = ri.region.Offset + ri.region.Size
 			}
-			totalData += region.Size
-			continue
+			for off := ext.offset; off < extEnd; off += copyChunkSize {
+				chunkLen := uint64(copyChunkSize)
+				if remaining := extEnd - off; remaining < chunkLen {
+					chunkLen = remaining
+				}
+				jobs = append(jobs, copyJob{
+					uffdFd: uffdFd,
+					dst:    base + (off - regionStart),
+					src:    uint64(h.mmapBase) + off,
+					length: chunkLen,
+				})
+			}
 		}
-
-		sparse = true
-		dataCopied, err := populateRegionDataOnly(uffdFd, region, mmapBase, extents)
-		if err != nil {
-			return fmt.Errorf("populating region %d data: %w", i, err)
-		}
-		totalData += dataCopied
-		totalHoles += region.Size - dataCopied
 	}
 
-	_ = totalHoles
+	// Dispatch jobs across parallel workers
+	if err := parallelCopy(jobs, copyWorkers); err != nil {
+		return fmt.Errorf("parallel UFFDIO_COPY: %w", err)
+	}
 
-	// If there are holes, start a background goroutine to handle page faults
-	// lazily. Any access to an unpopulated (hole) page by the VM will block
-	// the faulting vCPU thread until we respond with UFFDIO_ZEROPAGE.
-	if sparse && totalHoles > 0 {
-		go h.lazyFaultHandler(ctx, uffdFd)
+	// Start lazy fault handler for hole pages (if file is sparse)
+	if sparse {
+		go h.lazyFaultHandler(ctx, uffdFd, regionInfos)
 	}
 
 	return nil
 }
 
-// lazyFaultHandler polls the UFFD fd and serves page faults on hole pages
-// with UFFDIO_ZEROPAGE. Runs until the context is cancelled (VM destroyed).
-func (h *uffdHandler) lazyFaultHandler(ctx context.Context, uffdFd int) {
-	var msgBuf [uffdMsgSize]byte
+// clipExtentsToRegion returns the subset of whole-file data extents that
+// overlap with a given region [regionOffset, regionOffset+regionSize).
+func clipExtentsToRegion(allExtents []dataExtent, regionOffset, regionSize uint64) []dataExtent {
+	regionEnd := regionOffset + regionSize
+	var result []dataExtent
+	for _, ext := range allExtents {
+		extEnd := ext.offset + ext.length
+		// Skip extents entirely before or after the region
+		if extEnd <= regionOffset || ext.offset >= regionEnd {
+			continue
+		}
+		// Clip to region bounds
+		start := ext.offset
+		if start < regionOffset {
+			start = regionOffset
+		}
+		end := extEnd
+		if end > regionEnd {
+			end = regionEnd
+		}
+		result = append(result, dataExtent{offset: start, length: end - start})
+	}
+	return result
+}
+
+// parallelCopy distributes UFFDIO_COPY jobs across n worker goroutines.
+func parallelCopy(jobs []copyJob, workers int) error {
+	if len(jobs) == 0 {
+		return nil
+	}
+	if workers > len(jobs) {
+		workers = len(jobs)
+	}
+
+	jobCh := make(chan copyJob, len(jobs))
+	for _, j := range jobs {
+		jobCh <- j
+	}
+	close(jobCh)
+
+	var wg sync.WaitGroup
+	errCh := make(chan error, workers)
+
+	for w := 0; w < workers; w++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for job := range jobCh {
+				cp := ufffdioCopy{
+					dst:  job.dst,
+					src:  job.src,
+					len:  job.length,
+					mode: 0,
+				}
+				_, _, errno := unix.Syscall(
+					unix.SYS_IOCTL,
+					uintptr(job.uffdFd),
+					uintptr(_UFFDIO_COPY),
+					uintptr(unsafe.Pointer(&cp)),
+				)
+				if errno != 0 {
+					errCh <- fmt.Errorf("UFFDIO_COPY errno %v", errno)
+					return
+				}
+				if cp.copy < 0 {
+					errCh <- fmt.Errorf("UFFDIO_COPY returned %d", cp.copy)
+					return
+				}
+			}
+		}()
+	}
+
+	wg.Wait()
+	close(errCh)
+
+	// Return first error if any
+	for err := range errCh {
+		return err
+	}
+	return nil
+}
+
+// lazyFaultHandler serves page faults on hole pages with UFFDIO_ZEROPAGE.
+// Runs until the context is cancelled (VM destroyed).
+func (h *uffdHandler) lazyFaultHandler(ctx context.Context, uffdFd int, regions []regionInfo) {
+	const maxBatch = 16
+	var buf [uffdMsgSize * maxBatch]byte
 
 	for {
 		select {
@@ -261,64 +448,65 @@ func (h *uffdHandler) lazyFaultHandler(ctx context.Context, uffdFd int) {
 		default:
 		}
 
-		// Poll with a short timeout so we can check ctx cancellation
 		fds := []unix.PollFd{{
 			Fd:     int32(uffdFd),
 			Events: unix.POLLIN,
 		}}
-		n, err := unix.Poll(fds, 100) // 100ms timeout
+		n, err := unix.Poll(fds, 100)
 		if err != nil {
 			if err == unix.EINTR {
 				continue
 			}
-			return // fd closed or error
+			return
 		}
 		if n == 0 {
-			continue // timeout, check ctx
+			continue
 		}
 
-		// Read the uffd_msg
-		nr, err := unix.Read(uffdFd, msgBuf[:])
+		nr, err := unix.Read(uffdFd, buf[:])
 		if err != nil {
 			if err == unix.EAGAIN || err == unix.EINTR {
 				continue
 			}
-			return // fd closed
-		}
-		if nr < uffdMsgSize {
-			continue
+			return
 		}
 
-		// Parse event type (first byte of struct uffd_msg)
-		event := msgBuf[0]
+		numMsgs := nr / uffdMsgSize
+		for i := 0; i < numMsgs; i++ {
+			msg := buf[i*uffdMsgSize : (i+1)*uffdMsgSize]
+			event := msg[0]
 
-		switch event {
-		case _UFFD_EVENT_PAGEFAULT:
-			// Fault address is at offset 16 in struct uffd_msg (the union field)
-			faultAddr := *(*uint64)(unsafe.Pointer(&msgBuf[16]))
-			// Page-align the fault address
-			pageAddr := faultAddr & ^uint64(4095)
+			switch event {
+			case _UFFD_EVENT_PAGEFAULT:
+				faultAddr := *(*uint64)(unsafe.Pointer(&msg[16]))
+				pageAddr := faultAddr & ^uint64(4095)
 
-			zp := uffdioZeropage{
-				start: pageAddr,
-				len:   4096,
-				mode:  0,
+				zp := uffdioZeropage{
+					start: pageAddr,
+					len:   4096,
+					mode:  0,
+				}
+				unix.Syscall(
+					unix.SYS_IOCTL,
+					uintptr(uffdFd),
+					uintptr(_UFFDIO_ZEROPAGE),
+					uintptr(unsafe.Pointer(&zp)),
+				)
+
+			case _UFFD_EVENT_REMOVE:
+				// Balloon deflation — no action needed
 			}
-			unix.Syscall(
-				unix.SYS_IOCTL,
-				uintptr(uffdFd),
-				uintptr(_UFFDIO_ZEROPAGE),
-				uintptr(unsafe.Pointer(&zp)),
-			)
-
-		case _UFFD_EVENT_REMOVE:
-			// Balloon deflation — pages being removed from UFFD tracking.
-			// No action needed; the kernel handles the removal.
-
-		default:
-			// Ignore unknown events
 		}
 	}
+}
+
+// isInDataExtent checks if a file offset falls within any data extent.
+// Extents must be sorted by offset. Uses binary search for O(log n) lookup.
+func isInDataExtent(offset uint64, extents []dataExtent) bool {
+	i := sort.Search(len(extents), func(i int) bool {
+		return extents[i].offset+extents[i].length > offset
+	})
+	return i < len(extents) && offset >= extents[i].offset
 }
 
 // scanDataExtents uses SEEK_HOLE/SEEK_DATA to find non-hole regions in the
@@ -365,93 +553,6 @@ func scanDataExtents(f *os.File, rangeOffset, rangeSize uint64) ([]dataExtent, e
 	return extents, nil
 }
 
-// populateRegionDataOnly copies only data extents (non-holes) for a region.
-// Hole pages are left unpopulated — they'll be served by the lazy fault handler.
-// Returns bytes actually copied.
-func populateRegionDataOnly(uffdFd int, region memRegion, mmapBase uintptr, extents []dataExtent) (uint64, error) {
-	baseAddr := region.BaseHostVirtAddr
-	regionStart := region.Offset
-	regionEnd := region.Offset + region.Size
-	var totalCopied uint64
-
-	for _, ext := range extents {
-		extEnd := ext.offset + ext.length
-		if extEnd > regionEnd {
-			extEnd = regionEnd
-		}
-		for off := ext.offset; off < extEnd; off += copyChunkSize {
-			chunkLen := uint64(copyChunkSize)
-			if remaining := extEnd - off; remaining < chunkLen {
-				chunkLen = remaining
-			}
-
-			srcPtr := uint64(mmapBase) + off
-			dstAddr := baseAddr + (off - regionStart)
-
-			cp := ufffdioCopy{
-				dst:  dstAddr,
-				src:  srcPtr,
-				len:  chunkLen,
-				mode: 0,
-			}
-
-			_, _, errno := unix.Syscall(
-				unix.SYS_IOCTL,
-				uintptr(uffdFd),
-				uintptr(_UFFDIO_COPY),
-				uintptr(unsafe.Pointer(&cp)),
-			)
-			if errno != 0 {
-				return 0, fmt.Errorf("UFFDIO_COPY at offset %d: %v", off-regionStart, errno)
-			}
-			if cp.copy < 0 {
-				return 0, fmt.Errorf("UFFDIO_COPY returned %d at offset %d", cp.copy, off-regionStart)
-			}
-			totalCopied += chunkLen
-		}
-	}
-
-	return totalCopied, nil
-}
-
-// populateRegionFull copies all pages for a single memory region using
-// UFFDIO_COPY. Used as fallback when sparse scanning is unavailable.
-func populateRegionFull(uffdFd int, region memRegion, mmapBase uintptr) error {
-	baseAddr := region.BaseHostVirtAddr
-
-	for offset := uint64(0); offset < region.Size; offset += copyChunkSize {
-		chunkLen := uint64(copyChunkSize)
-		if remaining := region.Size - offset; remaining < chunkLen {
-			chunkLen = remaining
-		}
-
-		srcPtr := uint64(mmapBase) + region.Offset + offset
-		dstAddr := baseAddr + offset
-
-		cp := ufffdioCopy{
-			dst:  dstAddr,
-			src:  srcPtr,
-			len:  chunkLen,
-			mode: 0,
-		}
-
-		_, _, errno := unix.Syscall(
-			unix.SYS_IOCTL,
-			uintptr(uffdFd),
-			uintptr(_UFFDIO_COPY),
-			uintptr(unsafe.Pointer(&cp)),
-		)
-		if errno != 0 {
-			return fmt.Errorf("UFFDIO_COPY at offset %d: %v", offset, errno)
-		}
-		if cp.copy < 0 {
-			return fmt.Errorf("UFFDIO_COPY returned %d at offset %d", cp.copy, offset)
-		}
-	}
-
-	return nil
-}
-
 // receiveUffdAndRegions receives the UFFD file descriptor (via SCM_RIGHTS) and
 // the JSON memory region layout from Firecracker over the Unix socket.
 func receiveUffdAndRegions(conn *net.UnixConn) (int, []memRegion, error) {
@@ -460,8 +561,8 @@ func receiveUffdAndRegions(conn *net.UnixConn) (int, []memRegion, error) {
 		return -1, nil, fmt.Errorf("getting raw conn: %w", err)
 	}
 
-	buf := make([]byte, 64*1024)              // JSON payload buffer
-	oob := make([]byte, unix.CmsgSpace(4))    // space for 1 fd (4 bytes)
+	buf := make([]byte, 64*1024)           // JSON payload buffer
+	oob := make([]byte, unix.CmsgSpace(4)) // space for 1 fd (4 bytes)
 	var n, oobn int
 	var recvErr error
 

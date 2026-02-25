@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/signal"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -20,8 +21,16 @@ import (
 func runVM(cfg *ExecConfig, userCode, version, dhgHome string) (int, map[string]any, error) {
 	vmPaths := vm.NewVMPaths(dhgHome)
 
-	// Check prerequisites
-	prereqErrs := vm.CheckPrerequisites(vmPaths)
+	// Run prereqs, snapshot check, and stale cleanup concurrently
+	var prereqErrs []*vm.PrereqError
+	var snapErr error
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() { defer wg.Done(); prereqErrs = vm.CheckPrerequisites(vmPaths) }()
+	go func() { defer wg.Done(); snapErr = vm.CheckSnapshot(vmPaths, version) }()
+	go vm.CleanupStaleInstances(vmPaths) // fire-and-forget
+	wg.Wait()
+
 	if len(prereqErrs) > 0 {
 		var msgs []string
 		for _, e := range prereqErrs {
@@ -29,14 +38,9 @@ func runVM(cfg *ExecConfig, userCode, version, dhgHome string) (int, map[string]
 		}
 		return output.ExitError, nil, fmt.Errorf("VM prerequisites not met:\n  %s", strings.Join(msgs, "\n  "))
 	}
-
-	// Check snapshot exists
-	if err := vm.CheckSnapshot(vmPaths, version); err != nil {
-		return output.ExitError, nil, err
+	if snapErr != nil {
+		return output.ExitError, nil, snapErr
 	}
-
-	// Cleanup stale instances from previous crashed runs
-	vm.CleanupStaleInstances(vmPaths)
 
 	// Set up context with optional timeout
 	ctx := context.Background()

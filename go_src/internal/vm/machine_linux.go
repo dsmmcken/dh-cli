@@ -135,15 +135,30 @@ func BootAndSnapshot(ctx context.Context, cfg *VMConfig, paths *VMPaths, stderr 
 	// Give the runner daemon a moment to fully enter its accept loop
 	time.Sleep(500 * time.Millisecond)
 
-	// Warm up the JVM by running dummy scripts through the full execution
-	// pipeline. This triggers JIT compilation of Deephaven's run_script,
-	// table creation, and Arrow serialization code paths. Multiple iterations
-	// are needed for the JVM JIT to fully compile hot methods. The warmed-up
-	// JVM state is captured in the snapshot, so subsequent restores skip
-	// the multi-second JIT warmup cost.
-	fmt.Fprintf(stderr, "Warming up JVM...\n")
-	for i := 0; i < 5; i++ {
-		warmupReq := &VsockRequest{Code: "x = 1"}
+	// Warm up the JVM by running progressively complex scripts through the
+	// full execution pipeline. This triggers C2 JIT compilation of Deephaven's
+	// run_script, table creation, Arrow serialization, and pickle/base64 code
+	// paths. 20 iterations ensures the JVM's tiered compiler promotes all hot
+	// methods to optimized native code. The warmed-up JVM state is captured in
+	// the snapshot, so subsequent restores skip the multi-second JIT cost.
+	fmt.Fprintf(stderr, "Warming up JVM (20 iterations)...\n")
+	warmupScripts := []string{
+		// Phase 1 (iterations 0-4): basic execution path
+		"x = 1",
+		// Phase 2 (iterations 5-9): table creation + update (DH core JIT path)
+		"from deephaven import empty_table\nt = empty_table(1).update(['x = i'])",
+		// Phase 3 (iterations 10-14): wrapper-like pattern (pickle + base64 + IO)
+		"import io, pickle, base64\nb = io.StringIO()\nb.write('test')\nd = {'stdout': b.getvalue(), 'result_repr': '1'}\nbase64.b64encode(pickle.dumps(d))",
+		// Phase 4 (iterations 15-19): multi-column table + expressions
+		"from deephaven import empty_table\nt = empty_table(10).update(['x = i', 'y = x * x', 'z = (double)x / 3.14'])",
+	}
+
+	for i := 0; i < 20; i++ {
+		script := warmupScripts[i/5]
+		if i/5 >= len(warmupScripts) {
+			script = warmupScripts[len(warmupScripts)-1]
+		}
+		warmupReq := &VsockRequest{Code: script, ShowTables: true, ShowTableMeta: true}
 		warmupResp, err := ExecuteViaVsock(vsockPath, VsockPort, warmupReq)
 		if err != nil {
 			return fmt.Errorf("JVM warmup iteration %d failed: %w", i, err)
@@ -157,13 +172,14 @@ func BootAndSnapshot(ctx context.Context, cfg *VMConfig, paths *VMPaths, stderr 
 				runMs = fmt.Sprintf(" (run_script: %vms)", v)
 			}
 		}
-		fmt.Fprintf(stderr, "  warmup %d/5%s\n", i+1, runMs)
+		fmt.Fprintf(stderr, "  warmup %d/20%s\n", i+1, runMs)
 	}
 
 	// Inflate balloon to reclaim unused guest memory before snapshotting.
-	// Be conservative: reclaim ~half the VM memory, leaving plenty of headroom
-	// for the kernel, JVM committed pages, and Python processes.
-	balloonMiB := int64(DefaultMemSizeMiB / 2)
+	// Reclaim 3/4 of VM memory — after warmup, committed memory is ~500-600MB
+	// (JVM ~300MB + kernel ~100MB + Python ~100MB). Leaving 1/4 (~1152 MiB)
+	// provides headroom. Fewer data pages = faster UFFDIO_COPY on restore.
+	balloonMiB := int64(DefaultMemSizeMiB * 3 / 4)
 	fmt.Fprintf(stderr, "Inflating balloon to %d MiB to reclaim unused pages...\n", balloonMiB)
 	if err := machine.UpdateBalloon(ctx, balloonMiB); err != nil {
 		return fmt.Errorf("inflating balloon: %w", err)
@@ -363,10 +379,13 @@ func RestoreFromSnapshot(ctx context.Context, cfg *VMConfig, paths *VMPaths, std
 		return nil, nil, nil, fmt.Errorf("creating firecracker machine: %w", err)
 	}
 
-	// Remove AddVsocks handler — the vsock device is already configured in the
-	// snapshot state. Firecracker rejects PUT /vsock after loading a snapshot
-	// ("not supported after starting the microVM").
+	// Remove unnecessary handlers — for snapshot restore we only need StartVMM
+	// and LoadSnapshot. Other handlers either configure devices already in the
+	// snapshot or set up logging/networking we don't need.
 	machine.Handlers.FcInit = machine.Handlers.FcInit.Remove(firecracker.AddVsocksHandlerName)
+	machine.Handlers.FcInit = machine.Handlers.FcInit.Remove(firecracker.SetupNetworkHandlerName)
+	machine.Handlers.FcInit = machine.Handlers.FcInit.Remove(firecracker.CreateLogFilesHandlerName)
+	machine.Handlers.FcInit = machine.Handlers.FcInit.Remove(firecracker.BootstrapLoggingHandlerName)
 
 	// Remove stale vsock socket from previous runs — Firecracker will re-bind
 	// this path during snapshot restore and fails with EADDRINUSE if it exists.
@@ -401,16 +420,24 @@ func RestoreFromSnapshot(ctx context.Context, cfg *VMConfig, paths *VMPaths, std
 		}
 	}
 
-	// Wait briefly for vsock to become available after snapshot restore
-	restoreCtx, restoreCancel := context.WithTimeout(ctx, 5*time.Second)
-	defer restoreCancel()
-	if err := waitForVsock(restoreCtx, vsockPath, VsockPort, 5*time.Second); err != nil {
-		machine.StopVMM()
-		if uffd != nil {
-			uffd.Close()
+	// Connect to vsock — the daemon was in accept() at snapshot time, so it
+	// responds immediately after resume. Try once directly before falling back
+	// to polling with a short interval.
+	conn, connErr := connectVsock(vsockPath, VsockPort)
+	if connErr != nil {
+		// Fallback: poll briefly with 1ms interval
+		restoreCtx, restoreCancel := context.WithTimeout(ctx, 2*time.Second)
+		defer restoreCancel()
+		if err := waitForVsock(restoreCtx, vsockPath, VsockPort, 2*time.Second); err != nil {
+			machine.StopVMM()
+			if uffd != nil {
+				uffd.Close()
+			}
+			os.RemoveAll(instanceDir)
+			return nil, nil, nil, fmt.Errorf("Deephaven not reachable via vsock after restore: %w", err)
 		}
-		os.RemoveAll(instanceDir)
-		return nil, nil, nil, fmt.Errorf("Deephaven not reachable via vsock after restore: %w", err)
+	} else {
+		conn.Close()
 	}
 
 	pid, _ := machine.PID()
@@ -459,7 +486,7 @@ func waitForVsock(ctx context.Context, udsPath string, port uint32, timeout time
 			conn.Close()
 			return nil
 		}
-		time.Sleep(10 * time.Millisecond)
+		time.Sleep(1 * time.Millisecond)
 	}
 }
 
