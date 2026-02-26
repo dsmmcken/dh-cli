@@ -1,6 +1,6 @@
 VERSION ?= 0.1.0
 MODULE  := github.com/dsmmcken/dh-cli/go_src
-LDFLAGS := -ldflags="-X $(MODULE)/internal/cmd.Version=$(VERSION)"
+LDFLAGS := -ldflags="-s -w -X $(MODULE)/internal/cmd.Version=$(VERSION)"
 BINARY  := dhg
 PKG_NAME := dhg-cli
 

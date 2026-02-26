@@ -19,7 +19,12 @@ import (
 // runVM executes code via a Firecracker VM snapshot restore.
 // The VM contains a pre-connected runner daemon, so no host-side Python is needed.
 func runVM(cfg *ExecConfig, userCode, version, dhgHome string) (int, map[string]any, error) {
+	entryTime := time.Now()
 	vmPaths := vm.NewVMPaths(dhgHome)
+
+	// Start page cache warming ASAP — overlaps with prereq checks,
+	// Firecracker startup, and the beginning of VM execution.
+	vm.WarmSnapshotPageCacheAsync(vmPaths, version)
 
 	// Run prereqs, snapshot check, and stale cleanup concurrently
 	var prereqErrs []*vm.PrereqError
@@ -42,6 +47,8 @@ func runVM(cfg *ExecConfig, userCode, version, dhgHome string) (int, map[string]
 		return output.ExitError, nil, snapErr
 	}
 
+	prereqMs := time.Since(entryTime).Milliseconds()
+
 	// Set up context with optional timeout
 	ctx := context.Background()
 	var cancel context.CancelFunc
@@ -61,6 +68,11 @@ func runVM(cfg *ExecConfig, userCode, version, dhgHome string) (int, map[string]
 	}
 
 	if cfg.Verbose {
+		if !cfg.ProcessStart.IsZero() {
+			fmt.Fprintf(cfg.Stderr, "Go startup: %dms (process_start→entry=%dms)\n",
+				time.Since(cfg.ProcessStart).Milliseconds(),
+				entryTime.Sub(cfg.ProcessStart).Milliseconds())
+		}
 		backend := "UFFD"
 		if !useUffd {
 			backend = "File"
@@ -151,14 +163,15 @@ func runVM(cfg *ExecConfig, userCode, version, dhgHome string) (int, map[string]
 	elapsed := time.Since(start).Seconds()
 	exitCode := resp.ExitCode
 
+	vsockMs := time.Since(start).Milliseconds() - restoreMs
 	if cfg.Verbose && resp.Timing != nil {
-		fmt.Fprintf(cfg.Stderr, "VM timing: restore=%dms", restoreMs)
+		fmt.Fprintf(cfg.Stderr, "VM timing: prereqs=%dms restore=%dms vsock=%dms", prereqMs, restoreMs, vsockMs)
 		for _, key := range []string{"build_wrapper_ms", "run_script_ms", "read_result_ms"} {
 			if v, ok := resp.Timing[key]; ok {
 				fmt.Fprintf(cfg.Stderr, " %s=%v", key, v)
 			}
 		}
-		fmt.Fprintf(cfg.Stderr, " total=%.0fms\n", elapsed*1000)
+		fmt.Fprintf(cfg.Stderr, " total=%.0fms (since entry=%.0fms)\n", elapsed*1000, float64(time.Since(entryTime).Milliseconds()))
 	}
 
 	if cfg.JSONMode {

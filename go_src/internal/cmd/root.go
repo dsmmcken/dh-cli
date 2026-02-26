@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/dsmmcken/dh-cli/go_src/internal/config"
@@ -11,6 +12,10 @@ import (
 	"github.com/dsmmcken/dh-cli/go_src/internal/versions"
 	"github.com/spf13/cobra"
 )
+
+// ProcessStart captures when the Go process began (package init time).
+// Used to measure Go startup overhead in verbose mode.
+var ProcessStart = time.Now()
 
 var Version = "dev"
 

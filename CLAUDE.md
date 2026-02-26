@@ -30,6 +30,26 @@ cd go_src && CGO_ENABLED=0 go build -ldflags="-X github.com/dsmmcken/dh-cli/go_s
 
 Do **not** use `sudo cp`, `make install`, or `go install` directly.
 
+### Running `dhg exec` in the sandbox
+
+The sandbox has no Java and no `dhg install`, so the only way to run Deephaven code is via the VM snapshot path. Build the binary first, then use `DHG_HOME` to point at the persisted workspace artifacts.
+
+```bash
+# Build (needed each sandbox session — binary is ephemeral)
+cd go_src && CGO_ENABLED=0 go build -ldflags="-X github.com/dsmmcken/dh-cli/go_src/internal/cmd.Version=0.1.0" -o dhg ./cmd/dhg && cp dhg ~/.local/bin/dhg
+
+# Run code (auto-detects latest snapshot, no --version needed)
+DHG_HOME=/workspace/.dhg dhg exec --vm -c 'print("hello world")'
+DHG_HOME=/workspace/.dhg dhg exec --vm script.py
+echo 'print("hi")' | DHG_HOME=/workspace/.dhg dhg exec --vm -
+```
+
+If no snapshot exists yet, build one first (requires Docker):
+
+```bash
+DHG_HOME=/workspace/.dhg dhg vm prepare -v    # ~2-5 min, artifacts persist in /workspace/.dhg/
+```
+
 ## Go Toolchain Setup
 
 Current Go version: **1.26.0**

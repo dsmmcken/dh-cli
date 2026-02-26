@@ -12,6 +12,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strings"
 	"syscall"
 	"time"
@@ -61,9 +62,10 @@ type ExecConfig struct {
 	VMMode bool
 
 	// Resolved state (populated by Run)
-	ConfigDir string
-	Stderr    io.Writer
-	Stdout    io.Writer
+	ConfigDir    string
+	Stderr       io.Writer
+	Stdout       io.Writer
+	ProcessStart time.Time // when Go process started (for startup diagnostics)
 }
 
 // ExecCommand wraps exec.Command for testability.
@@ -71,6 +73,8 @@ var ExecCommand = exec.Command
 
 // Run executes the dhg exec workflow. Returns exit code, optional JSON result, and error.
 func Run(cfg *ExecConfig) (int, map[string]any, error) {
+	runStart := time.Now()
+
 	if cfg.Stderr == nil {
 		cfg.Stderr = os.Stderr
 	}
@@ -112,12 +116,19 @@ func Run(cfg *ExecConfig) (int, map[string]any, error) {
 	envVersion := os.Getenv("DHG_VERSION")
 
 	version, err := config.ResolveVersion(cfg.Version, envVersion)
+	if err != nil && cfg.VMMode {
+		// In VM mode, fall back to the latest available snapshot
+		if v, snapErr := latestSnapshotVersion(dhgHome); snapErr == nil {
+			version = v
+			err = nil
+		}
+	}
 	if err != nil {
 		return output.ExitError, nil, fmt.Errorf("resolving version: %w", err)
 	}
 
 	if cfg.Verbose {
-		fmt.Fprintf(cfg.Stderr, "Resolved version: %s\n", version)
+		fmt.Fprintf(cfg.Stderr, "Resolved version: %s (resolve=%dms)\n", version, time.Since(runStart).Milliseconds())
 	}
 
 	// VM mode: delegate to Firecracker-based execution
@@ -413,6 +424,32 @@ func EnsurePydeephaven(pythonBin, version string, quiet bool, stderr io.Writer) 
 		return fmt.Errorf("installing pydeephaven: %w", err)
 	}
 	return nil
+}
+
+// latestSnapshotVersion scans the VM snapshots directory and returns the
+// latest version that has a complete snapshot. This allows --vm mode to
+// work without an explicit version when a snapshot has been prepared.
+func latestSnapshotVersion(dhgHome string) (string, error) {
+	snapshotDir := filepath.Join(dhgHome, "vm", "snapshots")
+	entries, err := os.ReadDir(snapshotDir)
+	if err != nil {
+		return "", err
+	}
+	var versions []string
+	for _, e := range entries {
+		if e.IsDir() {
+			// Check that the snapshot is complete (has metadata.json)
+			meta := filepath.Join(snapshotDir, e.Name(), "metadata.json")
+			if _, err := os.Stat(meta); err == nil {
+				versions = append(versions, e.Name())
+			}
+		}
+	}
+	if len(versions) == 0 {
+		return "", fmt.Errorf("no VM snapshots found in %s", snapshotDir)
+	}
+	sort.Strings(versions)
+	return versions[len(versions)-1], nil
 }
 
 // exitCodeFromErr extracts the exit code from a process wait error.

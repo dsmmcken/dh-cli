@@ -133,19 +133,21 @@ func buildRootfsDocker(paths *VMPaths, version string, stderr io.Writer) error {
 		return fmt.Errorf("docker build failed: %w", err)
 	}
 
-	// Create container
-	createCmd := exec.Command("docker", "create", "--name", "dhg-vm-export-tmp", imageName)
+	// Create container (remove any stale one from a previous interrupted run first)
+	containerName := "dhg-vm-export-tmp"
+	exec.Command("docker", "rm", "-f", containerName).Run()
+	createCmd := exec.Command("docker", "create", "--name", containerName, imageName)
 	createOut, err := createCmd.Output()
 	if err != nil {
 		return fmt.Errorf("docker create failed: %w", err)
 	}
 	containerID := string(createOut[:12])
-	defer exec.Command("docker", "rm", "-f", "dhg-vm-export-tmp").Run()
+	defer exec.Command("docker", "rm", "-f", containerName).Run()
 
 	// Export container filesystem to tarball
 	tarPath := filepath.Join(tmpDir, "rootfs.tar")
 	fmt.Fprintf(stderr, "Exporting container %s filesystem...\n", containerID)
-	exportCmd := exec.Command("docker", "export", "-o", tarPath, "dhg-vm-export-tmp")
+	exportCmd := exec.Command("docker", "export", "-o", tarPath, containerName)
 	exportCmd.Stderr = stderr
 	if err := exportCmd.Run(); err != nil {
 		return fmt.Errorf("docker export failed: %w", err)
@@ -201,53 +203,110 @@ func fixMergedUsr(rootDir string, stderr io.Writer) {
 	}
 }
 
+// canSudo returns true if passwordless sudo is available.
+func canSudo() bool {
+	err := exec.Command("sudo", "-n", "true").Run()
+	return err == nil
+}
+
 // createExt4FromTar creates an ext4 filesystem image from a tar archive.
-// Uses fakeroot + mke2fs -d to build the image with correct root ownership,
-// without needing sudo.
+// Uses sudo if available (needed in Docker where fakeroot hangs), otherwise
+// falls back to fakeroot for environments without root access.
 func createExt4FromTar(tarPath, outputPath string, stderr io.Writer) error {
-	// Extract tar to a temp directory using fakeroot to preserve uid/gid from Docker
 	extractDir, err := os.MkdirTemp("", "dhg-rootfs-extract-*")
 	if err != nil {
 		return fmt.Errorf("creating extract dir: %w", err)
 	}
-	defer os.RemoveAll(extractDir)
+	defer func() {
+		// Need sudo to remove root-owned files if we used sudo to extract
+		if canSudo() {
+			exec.Command("sudo", "rm", "-rf", extractDir).Run()
+		} else {
+			os.RemoveAll(extractDir)
+		}
+	}()
 
-	// fakeroot state file — lets tar and mke2fs share the same fake uid/gid mappings
+	if canSudo() {
+		return createExt4WithSudo(tarPath, outputPath, extractDir, stderr)
+	}
+	return createExt4WithFakeroot(tarPath, outputPath, extractDir, stderr)
+}
+
+// createExt4WithSudo extracts and builds the ext4 image using sudo.
+// This is the preferred path inside Docker containers where fakeroot hangs.
+func createExt4WithSudo(tarPath, outputPath, extractDir string, stderr io.Writer) error {
+	fmt.Fprintf(stderr, "Extracting container filesystem (via sudo)...\n")
+	tarCmd := exec.Command("sudo", "tar", "xf", tarPath, "-C", extractDir)
+	tarCmd.Stderr = stderr
+	if err := tarCmd.Run(); err != nil {
+		return fmt.Errorf("extracting tar: %w", err)
+	}
+
+	fixMergedUsr(extractDir, stderr)
+
+	initPath := filepath.Join(extractDir, "sbin", "init")
+	os.Remove(initPath)
+	os.Symlink("/sbin/init.sh", initPath)
+
+	fmt.Fprintf(stderr, "Creating ext4 image from filesystem...\n")
+	mkfsCmd := exec.Command("sudo", "mke2fs",
+		"-t", "ext4",
+		"-d", extractDir,
+		"-F",
+		"-b", "4096",
+		outputPath,
+		"2G",
+	)
+	mkfsCmd.Stderr = stderr
+	if err := mkfsCmd.Run(); err != nil {
+		return fmt.Errorf("mke2fs failed: %w", err)
+	}
+
+	// Make the output file owned by the calling user
+	if u := os.Getenv("USER"); u != "" {
+		exec.Command("sudo", "chown", u+":"+u, outputPath).Run()
+	}
+
+	return nil
+}
+
+// createExt4WithFakeroot extracts and builds the ext4 image using fakeroot.
+// Fakeroot fakes root ownership without actual privileges, but can hang
+// inside Docker due to SysV IPC issues.
+func createExt4WithFakeroot(tarPath, outputPath, extractDir string, stderr io.Writer) error {
 	fakerootState := filepath.Join(extractDir, ".fakeroot.state")
 
+	// Prefer fakeroot-tcp (avoids SysV IPC semaphore hangs in some containers)
+	fakeroot := "fakeroot"
+	if p, err := exec.LookPath("fakeroot-tcp"); err == nil {
+		fakeroot = p
+	}
+
 	fmt.Fprintf(stderr, "Extracting container filesystem (via fakeroot)...\n")
-	tarCmd := exec.Command("fakeroot", "-s", fakerootState, "--",
+	tarCmd := exec.Command(fakeroot, "-s", fakerootState, "--",
 		"tar", "xf", tarPath, "-C", extractDir)
 	tarCmd.Stderr = stderr
 	if err := tarCmd.Run(); err != nil {
 		return fmt.Errorf("extracting tar: %w", err)
 	}
 
-	// Fix merged-usr symlinks broken by Docker export.
-	// Ubuntu 22.04 uses merged-usr where /lib -> /usr/lib, /bin -> /usr/bin, etc.
-	// Docker export stores files under both paths, so tar creates real directories
-	// instead of symlinks. This breaks Python's sys.prefix detection.
 	fixMergedUsr(extractDir, stderr)
 
-	// Create init symlink so /sbin/init also works
 	initPath := filepath.Join(extractDir, "sbin", "init")
 	os.Remove(initPath)
 	os.Symlink("/sbin/init.sh", initPath)
 
-	// Remove the fakeroot state from the filesystem before imaging
 	os.Remove(fakerootState)
 
-	// Create ext4 image using fakeroot with the saved state so mke2fs -d
-	// sees files as owned by root (uid 0) instead of the build user
 	fmt.Fprintf(stderr, "Creating ext4 image from filesystem...\n")
-	mkfsCmd := exec.Command("fakeroot", "-i", fakerootState, "--",
+	mkfsCmd := exec.Command(fakeroot, "-i", fakerootState, "--",
 		"mke2fs",
 		"-t", "ext4",
 		"-d", extractDir,
-		"-F",          // force, don't ask
-		"-b", "4096",  // block size
+		"-F",
+		"-b", "4096",
 		outputPath,
-		"2G", // size
+		"2G",
 	)
 	mkfsCmd.Stderr = stderr
 	if err := mkfsCmd.Run(); err != nil {

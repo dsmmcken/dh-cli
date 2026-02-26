@@ -168,7 +168,10 @@ def handle_request(session, request):
             "tables": [],
         }
 
-    assigned_names = get_assigned_names(code)
+    if show_tables:
+        assigned_names = get_assigned_names(code)
+    else:
+        assigned_names = set()
     wrapper = build_wrapper(code)
     _t1 = _t.time()
 

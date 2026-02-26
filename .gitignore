@@ -41,6 +41,9 @@ htmlcov/
 # Go binaries
 go_src/dhg
 
+# DHG runtime artifacts (VM snapshots, firecracker, rootfs)
+.dhg/
+
 # OS
 .DS_Store
 Thumbs.db

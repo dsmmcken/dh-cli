@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	firecracker "github.com/firecracker-microvm/firecracker-go-sdk"
@@ -321,7 +322,9 @@ func RestoreFromSnapshot(ctx context.Context, cfg *VMConfig, paths *VMPaths, std
 	// Determine whether to use UFFD — probe the syscall to detect kernel support.
 	useUffd := cfg.UseUffd
 	if useUffd && !ProbeUffd() {
-		fmt.Fprintf(stderr, "UFFD not available (try: sudo sysctl -w vm.unprivileged_userfaultfd=1), falling back to File backend\n")
+		if cfg.Verbose {
+			fmt.Fprintf(stderr, "UFFD not available (try: sudo sysctl -w vm.unprivileged_userfaultfd=1), falling back to File backend\n")
+		}
 		useUffd = false
 	}
 
@@ -392,6 +395,9 @@ func RestoreFromSnapshot(ctx context.Context, cfg *VMConfig, paths *VMPaths, std
 	// this path during snapshot restore and fails with EADDRINUSE if it exists.
 	os.Remove(vsockPath)
 
+	// Page cache warming is started earlier by the caller (WarmSnapshotPageCacheAsync)
+	// to maximize overlap. No additional warming needed here.
+
 	// Start loads the snapshot. In UFFD mode, Firecracker connects to the
 	// handler which eagerly populates all pages. In File mode, this also
 	// resumes the VM (~10ms restore + demand paging during execution).
@@ -421,25 +427,10 @@ func RestoreFromSnapshot(ctx context.Context, cfg *VMConfig, paths *VMPaths, std
 		}
 	}
 
-	// Connect to vsock — the daemon was in accept() at snapshot time, so it
-	// responds immediately after resume. Try once directly before falling back
-	// to polling with a short interval.
-	conn, connErr := connectVsock(vsockPath, VsockPort)
-	if connErr != nil {
-		// Fallback: poll briefly with 1ms interval
-		restoreCtx, restoreCancel := context.WithTimeout(ctx, 2*time.Second)
-		defer restoreCancel()
-		if err := waitForVsock(restoreCtx, vsockPath, VsockPort, 2*time.Second); err != nil {
-			machine.StopVMM()
-			if uffd != nil {
-				uffd.Close()
-			}
-			os.RemoveAll(instanceDir)
-			return nil, nil, nil, fmt.Errorf("Deephaven not reachable via vsock after restore: %w", err)
-		}
-	} else {
-		conn.Close()
-	}
+	// Skip vsock probe — the daemon was in accept() at snapshot time and
+	// will respond on the caller's first real ExecuteViaVsock connection.
+	// Probing here wastes a full connect/accept cycle + triggers page faults
+	// on a throwaway connection.
 
 	pid, _ := machine.PID()
 	info := &InstanceInfo{
@@ -632,6 +623,98 @@ func isZero(b []byte) bool {
 		}
 	}
 	return true
+}
+
+// WarmSnapshotPageCacheAsync starts a background goroutine that reads the
+// snapshot memory file's data extents into the kernel page cache.
+// Called from exec as early as possible to maximize overlap with other work.
+func WarmSnapshotPageCacheAsync(paths *VMPaths, version string) {
+	memPath := filepath.Join(paths.SnapshotDirForVersion(version), "snapshot_mem")
+	go warmSnapshotPageCache(memPath)
+}
+
+// warmSnapshotPageCache reads data extents of a snapshot memory file into the
+// kernel page cache using parallel readers. On SSDs/NVMe, parallel reads
+// saturate the device's I/O bandwidth better than a single sequential reader.
+func warmSnapshotPageCache(memPath string) {
+	f, err := os.Open(memPath)
+	if err != nil {
+		return
+	}
+	defer f.Close()
+	fi, err := f.Stat()
+	if err != nil || fi.Size() == 0 {
+		return
+	}
+	fd := int(f.Fd())
+	fileSize := fi.Size()
+
+	// Hint sequential access + trigger kernel readahead
+	unix.Fadvise(fd, 0, fileSize, unix.FADV_SEQUENTIAL)
+
+	// Scan data extents (fast SEEK_HOLE/SEEK_DATA)
+	extents, err := scanDataExtents(f, 0, uint64(fileSize))
+	if err != nil {
+		unix.Fadvise(fd, 0, fileSize, unix.FADV_WILLNEED)
+		return
+	}
+
+	// FADV_WILLNEED for all extents first (non-blocking, starts kernel readahead)
+	for _, ext := range extents {
+		unix.Fadvise(fd, int64(ext.offset), int64(ext.length), unix.FADV_WILLNEED)
+	}
+
+	// Parallel explicit reads to guarantee page cache population.
+	// 4 readers matches typical SSD queue depth for optimal throughput.
+	const numReaders = 4
+	if len(extents) == 0 {
+		return
+	}
+
+	// Split extents across readers by total bytes (not count) for balance
+	var totalBytes uint64
+	for _, ext := range extents {
+		totalBytes += ext.length
+	}
+	bytesPerReader := totalBytes / numReaders
+
+	var wg sync.WaitGroup
+	extIdx := 0
+	for r := 0; r < numReaders && extIdx < len(extents); r++ {
+		// Collect extents for this reader
+		var readerExtents []dataExtent
+		var readerBytes uint64
+		for extIdx < len(extents) {
+			readerExtents = append(readerExtents, extents[extIdx])
+			readerBytes += extents[extIdx].length
+			extIdx++
+			if r < numReaders-1 && readerBytes >= bytesPerReader {
+				break
+			}
+		}
+
+		wg.Add(1)
+		go func(exts []dataExtent) {
+			defer wg.Done()
+			// Each reader opens its own fd for independent I/O scheduling
+			rf, err := os.Open(memPath)
+			if err != nil {
+				return
+			}
+			defer rf.Close()
+			buf := make([]byte, 1024*1024)
+			for _, ext := range exts {
+				for off := ext.offset; off < ext.offset+ext.length; off += uint64(len(buf)) {
+					readLen := ext.offset + ext.length - off
+					if readLen > uint64(len(buf)) {
+						readLen = uint64(len(buf))
+					}
+					rf.ReadAt(buf[:readLen], int64(off))
+				}
+			}
+		}(readerExtents)
+	}
+	wg.Wait()
 }
 
 func copyFile(src, dst string) error {

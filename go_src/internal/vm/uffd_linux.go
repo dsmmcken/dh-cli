@@ -10,6 +10,7 @@ import (
 	"net"
 	"os"
 	"sort"
+	"strconv"
 	"sync"
 	"unsafe"
 
@@ -362,10 +363,77 @@ func (h *uffdHandler) doPopulate(ctx context.Context, stderr io.Writer) error {
 		return nil
 	}
 
-	// Lazy mode (default): serve ALL page faults on demand with 2MB chunks.
-	// No eager copy — the VM resumes immediately and faults are served from
-	// the pre-cached mmap. This saves ~600ms vs eager mode for typical workloads.
+	// Hybrid mode (default): pre-copy the first N MB of data extents to avoid
+	// cold-start page faults on the critical path (Python interpreter, JVM code
+	// cache, kernel), then serve remaining faults lazily with 2MB chunks.
+	eagerPreloadBytes := uint64(256 * 1024 * 1024) // default 256MB
+	if v := os.Getenv("DHG_VM_EAGER_MB"); v != "" {
+		if mb, err := strconv.ParseUint(v, 10, 64); err == nil {
+			eagerPreloadBytes = mb * 1024 * 1024
+		}
+	}
+
 	h.populatedChunks = make(map[uint64]struct{})
+
+	if eagerPreloadBytes > 0 {
+		// Wait for page cache warming before UFFDIO_COPY
+		<-h.preWarm
+
+		// Build eager copy jobs for first N MB of data extents.
+		// Hot pages (kernel, Python, JVM) tend to be at low file offsets
+		// since they're loaded early during boot.
+		var eagerJobs []copyJob
+		var eagerTotal uint64
+		for _, ri := range regionInfos {
+			if eagerTotal >= eagerPreloadBytes {
+				break
+			}
+			base := ri.region.BaseHostVirtAddr
+			regionOff := ri.region.Offset
+
+			for _, ext := range ri.extents {
+				if eagerTotal >= eagerPreloadBytes {
+					break
+				}
+				// ext.offset is absolute file offset; convert to region-relative
+				relStart := ext.offset - regionOff
+				relEnd := relStart + ext.length
+				if relEnd > ri.region.Size {
+					relEnd = ri.region.Size
+				}
+
+				firstChunk := (relStart / lazyChunkSize) * lazyChunkSize
+				for chunkOff := firstChunk; chunkOff < relEnd && eagerTotal < eagerPreloadBytes; chunkOff += lazyChunkSize {
+					chunkKey := base + chunkOff
+					if _, ok := h.populatedChunks[chunkKey]; ok {
+						continue
+					}
+
+					chunkEnd := chunkOff + lazyChunkSize
+					if chunkEnd > ri.region.Size {
+						chunkEnd = ri.region.Size
+					}
+
+					h.populatedChunks[chunkKey] = struct{}{}
+					eagerJobs = append(eagerJobs, copyJob{
+						uffdFd: uffdFd,
+						dst:    base + chunkOff,
+						src:    uint64(h.mmapBase) + regionOff + chunkOff,
+						length: chunkEnd - chunkOff,
+					})
+					eagerTotal += chunkEnd - chunkOff
+				}
+			}
+		}
+
+		if len(eagerJobs) > 0 {
+			if err := parallelCopy(eagerJobs, copyWorkers); err != nil {
+				return fmt.Errorf("hybrid eager UFFDIO_COPY: %w", err)
+			}
+		}
+	}
+
+	// Start parallel lazy handler for remaining faults
 	go h.lazyFaultHandlerV2(ctx, uffdFd, regionInfos)
 	return nil
 }
@@ -521,9 +589,31 @@ func (h *uffdHandler) lazyFaultHandler(ctx context.Context, uffdFd int, regions 
 // UFFDIO_COPY from the pre-cached mmap. Both data and hole pages are served
 // this way — the mmap reads zeros for hole regions, so UFFDIO_COPY produces
 // the same result as UFFDIO_ZEROPAGE but with a unified code path.
+//
+// Faults are dispatched to a pool of 4 worker goroutines so that multiple
+// vCPUs can have their faults served in parallel (the populatedChunks mutex
+// already provides thread safety).
 func (h *uffdHandler) lazyFaultHandlerV2(ctx context.Context, uffdFd int, regions []regionInfo) {
 	const maxBatch = 16
 	var buf [uffdMsgSize * maxBatch]byte
+
+	// Dispatch faults to a worker pool for parallel handling.
+	// 4 workers gives headroom beyond DefaultVCPUCount=2.
+	faultCh := make(chan uint64, 64)
+	var wg sync.WaitGroup
+	for w := 0; w < 4; w++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for faultAddr := range faultCh {
+				h.handleLazyFault(uffdFd, faultAddr, regions)
+			}
+		}()
+	}
+	defer func() {
+		close(faultCh)
+		wg.Wait()
+	}()
 
 	for {
 		select {
@@ -563,7 +653,7 @@ func (h *uffdHandler) lazyFaultHandlerV2(ctx context.Context, uffdFd int, region
 			switch event {
 			case _UFFD_EVENT_PAGEFAULT:
 				faultAddr := *(*uint64)(unsafe.Pointer(&msg[16]))
-				h.handleLazyFault(uffdFd, faultAddr, regions)
+				faultCh <- faultAddr
 
 			case _UFFD_EVENT_REMOVE:
 				// Balloon deflation — no action needed

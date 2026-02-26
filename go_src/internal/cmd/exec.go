@@ -87,6 +87,7 @@ func runExec(cmd *cobra.Command, args []string) error {
 		TLSClientKey:  execTLSClientKeyFlag,
 		VMMode:        execVMFlag,
 		ConfigDir:     ConfigDir,
+		ProcessStart:  ProcessStart,
 		Stderr:        cmd.ErrOrStderr(),
 		Stdout:        cmd.OutOrStdout(),
 	}
