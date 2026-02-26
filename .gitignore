@@ -39,7 +39,7 @@ htmlcov/
 .nox/
 
 # Go binaries
-go_src/dhg
+src/dhg
 
 # DHG runtime artifacts (VM snapshots, firecracker, rootfs)
 .dhg/

@@ -2,10 +2,9 @@
 
 ## Project Structure
 
-- **`go_src/`** — Main Go CLI source (module: `github.com/dsmmcken/dh-cli/go_src`)
-- **`go_unit_tests/`** — Unit tests (uses `replace ../go_src` directive)
-- **`go_behaviour_tests/`** — Black-box CLI/TUI tests (testscript .txtar files)
-- **`src/deephaven_cli/`** — Legacy Python CLI
+- **`src/`** — Main Go CLI source (module: `github.com/dsmmcken/dh-cli/src`)
+- **`unit_tests/`** — Unit tests (uses `replace ../src` directive)
+- **`behaviour_tests/`** — Black-box CLI/TUI tests (testscript .txtar files)
 - **`plans/`** — Design docs / implementation plans
 
 ## Build & Install
@@ -13,7 +12,7 @@
 ### Standard (local machine with `uvx` available)
 
 ```bash
-cd go_src && make install-local
+cd src && make install-local
 ```
 
 This builds a wheel for the current platform and installs it via `uv tool install` to `~/.local/bin/dhg`.
@@ -23,7 +22,7 @@ This builds a wheel for the current platform and installs it via `uv tool instal
 If the project lives on a virtiofs or FUSE mount, Python's `os.getcwd()` will fail, breaking `uv`, `go-to-wheel`, and `make install-local`. Use direct Go build instead:
 
 ```bash
-cd go_src && CGO_ENABLED=0 go build -ldflags="-X github.com/dsmmcken/dh-cli/go_src/internal/cmd.Version=0.1.0" -o dhg ./cmd/dhg && cp dhg ~/.local/bin/dhg
+cd src && CGO_ENABLED=0 go build -ldflags="-X github.com/dsmmcken/dh-cli/src/internal/cmd.Version=0.1.0" -o dhg ./cmd/dhg && cp dhg ~/.local/bin/dhg
 ```
 
 **How to tell:** If you see `Current directory does not exist` from uv/go-to-wheel, or `FileNotFoundError` from Python's `os.getcwd()`, use the fallback build.
@@ -36,7 +35,7 @@ The sandbox has no Java and no `dhg install`, so the only way to run Deephaven c
 
 ```bash
 # Build (needed each sandbox session — binary is ephemeral)
-cd go_src && CGO_ENABLED=0 go build -ldflags="-X github.com/dsmmcken/dh-cli/go_src/internal/cmd.Version=0.1.0" -o dhg ./cmd/dhg && cp dhg ~/.local/bin/dhg
+cd src && CGO_ENABLED=0 go build -ldflags="-X github.com/dsmmcken/dh-cli/src/internal/cmd.Version=0.1.0" -o dhg ./cmd/dhg && cp dhg ~/.local/bin/dhg
 
 # Run code (auto-detects latest snapshot, no --version needed)
 DHG_HOME=/workspace/.dhg dhg exec --vm -c 'print("hello world")'
@@ -74,13 +73,13 @@ Note: `CGO_ENABLED=0` is required — the sandbox has no gcc.
 
 ```bash
 # Unit tests
-cd go_unit_tests && go test ./...
+cd unit_tests && go test ./...
 
 # Behaviour tests
-cd go_behaviour_tests && go test ./...
+cd behaviour_tests && go test ./...
 
 # Vet all source
-cd go_src && go vet ./...
+cd src && go vet ./...
 ```
 
 ## Plan File Location
