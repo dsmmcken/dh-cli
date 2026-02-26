@@ -3,6 +3,7 @@ MODULE  := github.com/dsmmcken/dh-cli/src
 LDFLAGS := -ldflags="-s -w -X $(MODULE)/internal/cmd.Version=$(VERSION)"
 BINARY  := dhg
 PKG_NAME := dhg-cli
+SRC_DIR := src
 
 PLATFORMS := \
 	linux/amd64 \
@@ -37,19 +38,19 @@ endif
 WHEEL_PLATFORM := $(CURRENT_OS)-$(CURRENT_ARCH)
 
 GO_TO_WHEEL := uvx go-to-wheel
-GO_TO_WHEEL_ARGS := . \
+GO_TO_WHEEL_ARGS := $(SRC_DIR) \
 	--name $(PKG_NAME) \
 	--version $(VERSION) \
 	--entry-point $(BINARY) \
 	--set-version-var $(MODULE)/internal/cmd.Version \
 	--description "Deephaven CLI" \
-	--readme ../README.md \
+	--readme README.md \
 	--output-dir dist
 
-.PHONY: build build-all test clean package package-all install-local uninstall
+.PHONY: build build-all test vet clean package package-all install-local uninstall
 
 build:
-	CGO_ENABLED=0 go build $(LDFLAGS) -o $(BINARY) ./cmd/dhg
+	CGO_ENABLED=0 go -C $(SRC_DIR) build $(LDFLAGS) -o ../$(BINARY) ./cmd/dhg
 
 build-all:
 	@mkdir -p dist
@@ -59,12 +60,15 @@ build-all:
 		output="dist/$(BINARY)-$${os}-$${arch}"; \
 		if [ "$$os" = "windows" ]; then output="$${output}.exe"; fi; \
 		echo "Building $$output ..."; \
-		CGO_ENABLED=0 GOOS=$$os GOARCH=$$arch go build $(LDFLAGS) -o $$output ./cmd/dhg; \
+		CGO_ENABLED=0 GOOS=$$os GOARCH=$$arch go -C $(SRC_DIR) build $(LDFLAGS) -o ../$$output ./cmd/dhg; \
 	done
 
 test:
-	cd ../unit_tests && go test ./...
-	cd ../behaviour_tests && go test ./...
+	cd unit_tests && go test ./...
+	cd behaviour_tests && go test ./...
+
+vet:
+	cd $(SRC_DIR) && go vet ./...
 
 clean:
 	rm -f $(BINARY)

@@ -12,7 +12,7 @@
 ### Standard (local machine with `uvx` available)
 
 ```bash
-cd src && make install-local
+make install-local
 ```
 
 This builds a wheel for the current platform and installs it via `uv tool install` to `~/.local/bin/dhg`.
@@ -22,7 +22,7 @@ This builds a wheel for the current platform and installs it via `uv tool instal
 If the project lives on a virtiofs or FUSE mount, Python's `os.getcwd()` will fail, breaking `uv`, `go-to-wheel`, and `make install-local`. Use direct Go build instead:
 
 ```bash
-cd src && CGO_ENABLED=0 go build -ldflags="-X github.com/dsmmcken/dh-cli/src/internal/cmd.Version=0.1.0" -o dhg ./cmd/dhg && cp dhg ~/.local/bin/dhg
+CGO_ENABLED=0 make build && cp dhg ~/.local/bin/dhg
 ```
 
 **How to tell:** If you see `Current directory does not exist` from uv/go-to-wheel, or `FileNotFoundError` from Python's `os.getcwd()`, use the fallback build.
@@ -35,7 +35,7 @@ The sandbox has no Java and no `dhg install`, so the only way to run Deephaven c
 
 ```bash
 # Build (needed each sandbox session — binary is ephemeral)
-cd src && CGO_ENABLED=0 go build -ldflags="-X github.com/dsmmcken/dh-cli/src/internal/cmd.Version=0.1.0" -o dhg ./cmd/dhg && cp dhg ~/.local/bin/dhg
+CGO_ENABLED=0 make build && cp dhg ~/.local/bin/dhg
 
 # Run code (auto-detects latest snapshot, no --version needed)
 DHG_HOME=/workspace/.dhg dhg exec --vm -c 'print("hello world")'
@@ -72,14 +72,8 @@ Note: `CGO_ENABLED=0` is required — the sandbox has no gcc.
 ## Running Tests
 
 ```bash
-# Unit tests
-cd unit_tests && go test ./...
-
-# Behaviour tests
-cd behaviour_tests && go test ./...
-
-# Vet all source
-cd src && go vet ./...
+make test    # unit + behaviour tests
+make vet     # vet all source
 ```
 
 ## Plan File Location

@@ -39,6 +39,8 @@ htmlcov/
 .nox/
 
 # Go binaries
+# Go binary
+dhg
 src/dhg
 
 # DHG runtime artifacts (VM snapshots, firecracker, rootfs)
