@@ -176,10 +176,11 @@ func BootAndSnapshot(ctx context.Context, cfg *VMConfig, paths *VMPaths, stderr 
 	}
 
 	// Inflate balloon to reclaim unused guest memory before snapshotting.
-	// Reclaim 3/4 of VM memory — after warmup, committed memory is ~500-600MB
-	// (JVM ~300MB + kernel ~100MB + Python ~100MB). Leaving 1/4 (~1152 MiB)
-	// provides headroom. Fewer data pages = faster UFFDIO_COPY on restore.
-	balloonMiB := int64(DefaultMemSizeMiB * 3 / 4)
+	// JVM starts with -Xms32m -XX:-AlwaysPreTouch so G1 only commits
+	// heap regions on demand. After warmup, committed memory is much
+	// lower (~200-400MB). Leave 512 MiB headroom for kernel + JVM +
+	// Python residual. deflateOnOom=true reclaims on demand after restore.
+	balloonMiB := int64(DefaultMemSizeMiB - 512)
 	fmt.Fprintf(stderr, "Inflating balloon to %d MiB to reclaim unused pages...\n", balloonMiB)
 	if err := machine.UpdateBalloon(ctx, balloonMiB); err != nil {
 		return fmt.Errorf("inflating balloon: %w", err)

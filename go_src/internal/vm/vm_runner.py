@@ -5,13 +5,10 @@ pydeephaven, then listens on a vsock port for JSON execution requests from the h
 This daemon + its warm Session are captured in the VM snapshot.
 """
 import ast
-import base64
 import json
 import os
-import pickle
 import socket
 import sys
-import textwrap
 import traceback
 
 VMADDR_CID_ANY = 0xFFFFFFFF
@@ -54,14 +51,13 @@ def _extract_names(target):
 # --- Wrapper script builder ---
 
 def build_wrapper(code):
-    """Build the wrapper script that captures output and creates result table."""
+    """Build the wrapper script that captures output and writes result to file."""
     code_repr = repr(code)
     lines = []
 
     lines.append("import io as __dh_io")
     lines.append("import sys as __dh_sys")
-    lines.append("import pickle as __dh_pickle")
-    lines.append("import base64 as __dh_base64")
+    lines.append("import json as __dh_json")
     lines.append("")
     lines.append("__dh_stdout_buf = __dh_io.StringIO()")
     lines.append("__dh_stderr_buf = __dh_io.StringIO()")
@@ -90,49 +86,26 @@ def build_wrapper(code):
     lines.append('    "result_repr": repr(__dh_result) if __dh_result is not None else None,')
     lines.append('    "error": __dh_error,')
     lines.append("}")
-    lines.append(
-        '__dh_pickled = __dh_base64.b64encode('
-        '__dh_pickle.dumps(__dh_results_dict)).decode("ascii")'
-    )
     lines.append("")
-    lines.append("from deephaven import empty_table as __dh_empty_table")
-    lines.append('__dh_result_table = __dh_empty_table(1).update('
-                  '[f"data = `{__dh_pickled}`"])')
+    lines.append("with open('/tmp/__dh_result.json', 'w') as __dh_f:")
+    lines.append("    __dh_json.dump(__dh_results_dict, __dh_f)")
     lines.append("")
-    lines.append("del __dh_io, __dh_sys, __dh_pickle, __dh_base64")
+    lines.append("del __dh_io, __dh_sys, __dh_json")
     lines.append("del __dh_stdout_buf, __dh_stderr_buf, __dh_orig_stdout, __dh_orig_stderr")
-    lines.append("del __dh_result, __dh_error, __dh_results_dict, __dh_pickled, __dh_empty_table")
+    lines.append("del __dh_result, __dh_error, __dh_results_dict, __dh_f")
 
     return "\n".join(lines)
 
 
 # --- Result reading ---
 
-def read_result_table(session):
-    """Read and decode the pickled results from the result table."""
-    table = session.open_table("__dh_result_table")
+def read_result_file():
+    """Read results from the JSON file written by the wrapper script."""
     try:
-        arrow_table = table.to_arrow()
-        if arrow_table.num_rows > 0:
-            encoded_data = arrow_table.column("data")[0].as_py()
-            pickled_bytes = base64.b64decode(encoded_data.encode("ascii"))
-            return pickle.loads(pickled_bytes)
+        with open('/tmp/__dh_result.json', 'r') as f:
+            return json.load(f)
     except Exception as e:
         return {"error": f"Failed to read results: {e}"}
-    return {}
-
-
-def cleanup_result_table(session):
-    """Delete __dh_result_table from server namespace."""
-    try:
-        session.run_script(textwrap.dedent("""\
-            try:
-                del __dh_result_table
-            except NameError:
-                pass
-        """))
-    except Exception:
-        pass
 
 
 # --- Table preview ---
@@ -212,11 +185,8 @@ def handle_request(session, request):
         }
 
     _t2 = _t.time()
-    result = read_result_table(session)
+    result = read_result_file()
     _t3 = _t.time()
-
-    # Skip cleanup_result_table — the VM is destroyed after exec, so
-    # deleting __dh_result_table is a wasted gRPC round-trip (~50-100ms).
 
     stdout_text = result.get("stdout", "")
     stderr_text = result.get("stderr", "")
