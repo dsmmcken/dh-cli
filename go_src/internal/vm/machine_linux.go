@@ -144,13 +144,13 @@ func BootAndSnapshot(ctx context.Context, cfg *VMConfig, paths *VMPaths, stderr 
 	fmt.Fprintf(stderr, "Warming up JVM (20 iterations)...\n")
 	warmupScripts := []string{
 		// Phase 1 (iterations 0-4): basic execution path
-		"x = 1",
+		"x = 1\ndel x",
 		// Phase 2 (iterations 5-9): table creation + update (DH core JIT path)
-		"from deephaven import empty_table\nt = empty_table(1).update(['x = i'])",
+		"from deephaven import empty_table\nt = empty_table(1).update(['x = i'])\ndel t, empty_table",
 		// Phase 3 (iterations 10-14): wrapper-like pattern (pickle + base64 + IO)
-		"import io, pickle, base64\nb = io.StringIO()\nb.write('test')\nd = {'stdout': b.getvalue(), 'result_repr': '1'}\nbase64.b64encode(pickle.dumps(d))",
+		"import io, pickle, base64\nb = io.StringIO()\nb.write('test')\nd = {'stdout': b.getvalue(), 'result_repr': '1'}\nbase64.b64encode(pickle.dumps(d))\ndel io, pickle, base64, b, d",
 		// Phase 4 (iterations 15-19): multi-column table + expressions
-		"from deephaven import empty_table\nt = empty_table(10).update(['x = i', 'y = x * x', 'z = (double)x / 3.14'])",
+		"from deephaven import empty_table\nt = empty_table(10).update(['x = i', 'y = x * x', 'z = (double)x / 3.14'])\ndel t, empty_table",
 	}
 
 	for i := 0; i < 20; i++ {

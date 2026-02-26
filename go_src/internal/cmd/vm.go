@@ -6,6 +6,7 @@ import (
 
 	"github.com/dsmmcken/dh-cli/go_src/internal/config"
 	"github.com/dsmmcken/dh-cli/go_src/internal/output"
+	"github.com/dsmmcken/dh-cli/go_src/internal/versions"
 	"github.com/dsmmcken/dh-cli/go_src/internal/vm"
 	"github.com/spf13/cobra"
 )
@@ -74,7 +75,13 @@ func runVMPrepare(cmd *cobra.Command, args []string) error {
 
 	version, err := config.ResolveVersion(vmVersionFlag, os.Getenv("DHG_VERSION"))
 	if err != nil {
-		return fmt.Errorf("resolving version: %w", err)
+		// No version configured anywhere — fetch latest from PyPI
+		fmt.Fprintf(cmd.ErrOrStderr(), "No version specified, fetching latest from PyPI...\n")
+		latest, pypiErr := versions.FetchLatestVersion()
+		if pypiErr != nil {
+			return fmt.Errorf("resolving version: %w (PyPI fallback also failed: %v)", err, pypiErr)
+		}
+		version = latest
 	}
 
 	paths := vm.NewVMPaths(dhgHome)

@@ -153,7 +153,7 @@ func runVM(cfg *ExecConfig, userCode, version, dhgHome string) (int, map[string]
 
 	if cfg.Verbose && resp.Timing != nil {
 		fmt.Fprintf(cfg.Stderr, "VM timing: restore=%dms", restoreMs)
-		for _, key := range []string{"build_wrapper_ms", "run_script_ms", "read_result_ms", "cleanup_ms"} {
+		for _, key := range []string{"build_wrapper_ms", "run_script_ms", "read_result_ms"} {
 			if v, ok := resp.Timing[key]; ok {
 				fmt.Fprintf(cfg.Stderr, " %s=%v", key, v)
 			}

@@ -95,13 +95,13 @@ def build_wrapper(code):
         '__dh_pickle.dumps(__dh_results_dict)).decode("ascii")'
     )
     lines.append("")
-    lines.append("from deephaven import empty_table")
-    lines.append('__dh_result_table = empty_table(1).update('
+    lines.append("from deephaven import empty_table as __dh_empty_table")
+    lines.append('__dh_result_table = __dh_empty_table(1).update('
                   '[f"data = `{__dh_pickled}`"])')
     lines.append("")
     lines.append("del __dh_io, __dh_sys, __dh_pickle, __dh_base64")
     lines.append("del __dh_stdout_buf, __dh_stderr_buf, __dh_orig_stdout, __dh_orig_stderr")
-    lines.append("del __dh_result, __dh_error, __dh_results_dict, __dh_pickled")
+    lines.append("del __dh_result, __dh_error, __dh_results_dict, __dh_pickled, __dh_empty_table")
 
     return "\n".join(lines)
 
@@ -214,8 +214,9 @@ def handle_request(session, request):
     _t2 = _t.time()
     result = read_result_table(session)
     _t3 = _t.time()
-    cleanup_result_table(session)
-    _t4 = _t.time()
+
+    # Skip cleanup_result_table — the VM is destroyed after exec, so
+    # deleting __dh_result_table is a wasted gRPC round-trip (~50-100ms).
 
     stdout_text = result.get("stdout", "")
     stderr_text = result.get("stderr", "")
@@ -223,10 +224,11 @@ def handle_request(session, request):
     error_text = result.get("error")
 
     tables_info = []
-    if show_tables:
-        server_tables = set(session.tables) - {"__dh_result_table"}
-        assigned_tables = [n for n in assigned_names if n in server_tables]
-        for tname in assigned_tables:
+    if show_tables and assigned_names:
+        # Use assigned_names directly to avoid a session.tables gRPC call.
+        # Each get_table_preview opens the table individually; if it doesn't
+        # exist on the server, it returns None.
+        for tname in assigned_names:
             info = get_table_preview(session, tname, show_meta=show_table_meta)
             if info:
                 tables_info.append(info)
@@ -242,7 +244,6 @@ def handle_request(session, request):
             "build_wrapper_ms": int((_t1-_t0)*1000),
             "run_script_ms": int((_t2-_t1)*1000),
             "read_result_ms": int((_t3-_t2)*1000),
-            "cleanup_ms": int((_t4-_t3)*1000),
         },
     }
 

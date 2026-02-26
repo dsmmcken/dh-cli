@@ -97,15 +97,15 @@ def build_wrapper(code: str, script_path: str | None = None, cwd: str | None = N
         '__dh_pickle.dumps(__dh_results_dict)).decode("ascii")'
     )
     lines.append("")
-    lines.append("from deephaven import empty_table")
-    lines.append('__dh_result_table = empty_table(1).update('
+    lines.append("from deephaven import empty_table as __dh_empty_table")
+    lines.append('__dh_result_table = __dh_empty_table(1).update('
                   '[f"data = `{__dh_pickled}`"])')
     lines.append("")
     if cwd is not None:
         lines.append("del __dh_os, __dh_orig_cwd")
     lines.append("del __dh_io, __dh_sys, __dh_pickle, __dh_base64")
     lines.append("del __dh_stdout_buf, __dh_stderr_buf, __dh_orig_stdout, __dh_orig_stderr")
-    lines.append("del __dh_result, __dh_error, __dh_results_dict, __dh_pickled")
+    lines.append("del __dh_result, __dh_error, __dh_results_dict, __dh_pickled, __dh_empty_table")
 
     return "\n".join(lines)
 
