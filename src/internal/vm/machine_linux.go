@@ -394,18 +394,39 @@ func RestoreFromSnapshot(ctx context.Context, cfg *VMConfig, paths *VMPaths, std
 	machine.Handlers.FcInit = machine.Handlers.FcInit.Remove(firecracker.CreateLogFilesHandlerName)
 	machine.Handlers.FcInit = machine.Handlers.FcInit.Remove(firecracker.BootstrapLoggingHandlerName)
 
+	// Serialize snapshot restores with a file lock. Firecracker always binds
+	// the vsock UDS at snapVsockPath (embedded in the snapshot state), so
+	// concurrent restores from the same snapshot race on bind(). The lock
+	// covers: remove stale socket → restore (bind) → rename to per-instance
+	// path.
+	lockPath := filepath.Join(snapDir, "restore.lock")
+	lockFile, err := os.OpenFile(lockPath, os.O_CREATE|os.O_RDWR, 0o644)
+	if err != nil {
+		if uffd != nil {
+			uffd.Close()
+		}
+		os.RemoveAll(instanceDir)
+		return nil, nil, nil, fmt.Errorf("opening restore lock: %w", err)
+	}
+	defer lockFile.Close()
+
+	if err := unix.Flock(int(lockFile.Fd()), unix.LOCK_EX); err != nil {
+		if uffd != nil {
+			uffd.Close()
+		}
+		os.RemoveAll(instanceDir)
+		return nil, nil, nil, fmt.Errorf("acquiring restore lock: %w", err)
+	}
+
 	// Remove stale vsock socket from previous runs — Firecracker will re-bind
 	// this path during snapshot restore and fails with EADDRINUSE if it exists.
-	// Always remove the snapshot-relative path (where Firecracker actually binds).
 	os.Remove(snapVsockPath)
-
-	// Page cache warming is started earlier by the caller (WarmSnapshotPageCacheAsync)
-	// to maximize overlap. No additional warming needed here.
 
 	// Start loads the snapshot. In UFFD mode, Firecracker connects to the
 	// handler which eagerly populates all pages. In File mode, this also
 	// resumes the VM (~10ms restore + demand paging during execution).
 	if err := machine.Start(ctx); err != nil {
+		unix.Flock(int(lockFile.Fd()), unix.LOCK_UN)
 		if uffd != nil {
 			uffd.Close()
 		}
@@ -416,6 +437,7 @@ func RestoreFromSnapshot(ctx context.Context, cfg *VMConfig, paths *VMPaths, std
 	if useUffd {
 		// Wait for UFFD handler to finish populating all pages.
 		if err := uffd.Wait(ctx); err != nil {
+			unix.Flock(int(lockFile.Fd()), unix.LOCK_UN)
 			machine.StopVMM()
 			uffd.Close()
 			os.RemoveAll(instanceDir)
@@ -424,6 +446,7 @@ func RestoreFromSnapshot(ctx context.Context, cfg *VMConfig, paths *VMPaths, std
 
 		// All pages populated — resume VM with zero pending page faults.
 		if err := machine.ResumeVM(ctx); err != nil {
+			unix.Flock(int(lockFile.Fd()), unix.LOCK_UN)
 			machine.StopVMM()
 			uffd.Close()
 			os.RemoveAll(instanceDir)
@@ -436,22 +459,25 @@ func RestoreFromSnapshot(ctx context.Context, cfg *VMConfig, paths *VMPaths, std
 	// Probing here wastes a full connect/accept cycle + triggers page faults
 	// on a throwaway connection.
 
-	// Determine the vsock path to expose. Firecracker always binds at
-	// snapVsockPath. For pool VMs (VsockUDSPath set), rename the socket
-	// to a per-instance path so multiple VMs from the same snapshot don't
-	// collide. The calling code serializes restores to avoid races.
-	effectiveVsockPath := snapVsockPath
+	// Rename vsock socket to a per-instance path so concurrent VMs from the
+	// same snapshot don't collide. This must happen while we hold the lock
+	// so the next restore's os.Remove doesn't race with our bind().
+	effectiveVsockPath := filepath.Join(instanceDir, "vsock.sock")
 	if cfg.VsockUDSPath != "" {
-		if err := os.Rename(snapVsockPath, cfg.VsockUDSPath); err != nil {
-			machine.StopVMM()
-			if uffd != nil {
-				uffd.Close()
-			}
-			os.RemoveAll(instanceDir)
-			return nil, nil, nil, fmt.Errorf("renaming vsock socket to %s: %w", cfg.VsockUDSPath, err)
-		}
 		effectiveVsockPath = cfg.VsockUDSPath
 	}
+	if err := os.Rename(snapVsockPath, effectiveVsockPath); err != nil {
+		unix.Flock(int(lockFile.Fd()), unix.LOCK_UN)
+		machine.StopVMM()
+		if uffd != nil {
+			uffd.Close()
+		}
+		os.RemoveAll(instanceDir)
+		return nil, nil, nil, fmt.Errorf("renaming vsock socket to %s: %w", effectiveVsockPath, err)
+	}
+
+	// Release lock — snapVsockPath is now free for the next restore.
+	unix.Flock(int(lockFile.Fd()), unix.LOCK_UN)
 
 	pid, _ := machine.PID()
 	info := &InstanceInfo{
