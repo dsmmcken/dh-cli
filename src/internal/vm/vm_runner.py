@@ -55,6 +55,17 @@ def build_wrapper(code):
     code_repr = repr(code)
     lines = []
 
+    # Set CWD to /workspace so relative paths in user code resolve to
+    # /workspace/* which triggers the LD_PRELOAD interceptor to fetch
+    # files from the host transparently. This runs inside the Deephaven
+    # server process (not the runner), which is where file I/O happens.
+    lines.append("import os as __dh_os")
+    lines.append("try:")
+    lines.append("    __dh_os.chdir('/workspace')")
+    lines.append("except OSError:")
+    lines.append("    pass")
+    lines.append("del __dh_os")
+    lines.append("")
     lines.append("import io as __dh_io")
     lines.append("import sys as __dh_sys")
     lines.append("import json as __dh_json")
@@ -154,6 +165,7 @@ def handle_request(session, request):
     """Process a single execution request. Returns response dict."""
     import time as _t
     _t0 = _t.time()
+
     code = request.get("code", "")
     show_tables = request.get("show_tables", False)
     show_table_meta = request.get("show_table_meta", False)

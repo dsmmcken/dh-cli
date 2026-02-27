@@ -14,6 +14,9 @@ import (
 //go:embed vm_runner.py
 var vmRunnerScript string
 
+//go:embed embed/libworkspace.c
+var libworkspaceSource string
+
 // dockerfileTemplate creates a minimal Linux image with JVM + Deephaven.
 const dockerfileTemplate = `FROM ubuntu:22.04
 
@@ -32,6 +35,13 @@ RUN python3 -m pip install --no-cache-dir \
     deephaven-plugin-ui \
     deephaven-plugin-plotly-express
 
+COPY libworkspace.c /tmp/libworkspace.c
+RUN apt-get update && apt-get install -y --no-install-recommends gcc \
+    && gcc -shared -fPIC -O2 -o /opt/libworkspace.so /tmp/libworkspace.c -ldl -lpthread \
+    && strip /opt/libworkspace.so \
+    && rm /tmp/libworkspace.c \
+    && apt-get purge -y gcc && rm -rf /var/lib/apt/lists/*
+
 COPY init.sh /sbin/init.sh
 RUN chmod +x /sbin/init.sh
 COPY vm_runner.py /opt/vm_runner.py
@@ -47,6 +57,14 @@ mount -t devtmpfs devtmpfs /dev
 
 # Ensure loopback interface is up (required for localhost TCP after snapshot restore)
 ip link set lo up
+
+# Transparent workspace file access via LD_PRELOAD.
+# libworkspace.so intercepts file operations for /workspace/* paths and proxies
+# them to the host file server over vsock. It is dormant during boot (no process
+# accesses /workspace/*) and only activates after snapshot restore when the
+# runner does os.chdir('/workspace').
+export LD_PRELOAD=/opt/libworkspace.so
+mkdir -p /workspace
 
 # Ensure pip-installed packages are on Python's path.
 # Firecracker's minimal boot can cause sys.prefix detection issues.
@@ -122,6 +140,11 @@ func buildRootfsDocker(paths *VMPaths, version string, stderr io.Writer) error {
 	// Write vm_runner.py (the in-VM execution daemon)
 	if err := os.WriteFile(filepath.Join(tmpDir, "vm_runner.py"), []byte(vmRunnerScript), 0o644); err != nil {
 		return fmt.Errorf("writing vm_runner.py: %w", err)
+	}
+
+	// Write libworkspace.c (LD_PRELOAD library for transparent workspace access)
+	if err := os.WriteFile(filepath.Join(tmpDir, "libworkspace.c"), []byte(libworkspaceSource), 0o644); err != nil {
+		return fmt.Errorf("writing libworkspace.c: %w", err)
 	}
 
 	imageName := fmt.Sprintf("dhg-vm-%s", version)

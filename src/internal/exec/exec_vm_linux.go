@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strings"
 	"sync"
 	"syscall"
@@ -78,6 +79,18 @@ func runVM(cfg *ExecConfig, userCode, version, dhgHome string) (int, map[string]
 			backend = "File"
 		}
 		fmt.Fprintf(cfg.Stderr, "Restoring VM from snapshot for version %s (backend=%s)...\n", version, backend)
+	}
+
+	// Start host file server before VM restore. The guest LD_PRELOAD library
+	// will connect to this server to fetch workspace files on demand.
+	cwd, _ := os.Getwd()
+	vsockPath := filepath.Join(vmPaths.SnapshotDirForVersion(version), "vsock.sock")
+	fileServer, err := vm.StartFileServer(vsockPath, cwd)
+	if err != nil && cfg.Verbose {
+		fmt.Fprintf(cfg.Stderr, "Warning: file server: %v\n", err)
+	}
+	if fileServer != nil {
+		defer fileServer.Close()
 	}
 
 	start := time.Now()

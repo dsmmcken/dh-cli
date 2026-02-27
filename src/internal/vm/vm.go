@@ -20,6 +20,11 @@ const (
 	// DefaultVCPUCount is the default number of vCPUs.
 	DefaultVCPUCount = 2
 
+	// FileServerPort is the vsock port for the host file server.
+	// The guest LD_PRELOAD library connects to CID=2:FileServerPort to fetch
+	// workspace files on demand.
+	FileServerPort = 10001
+
 	// FirecrackerVersion is the version of Firecracker to download.
 	FirecrackerVersion = "v1.12.0"
 )
