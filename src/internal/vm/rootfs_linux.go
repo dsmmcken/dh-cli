@@ -28,7 +28,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN python3 -m pip install --no-cache-dir --upgrade setuptools wheel
 RUN python3 -m pip install --no-cache-dir \
     deephaven-server==%s \
-    pydeephaven==%s
+    pydeephaven==%s \
+    deephaven-plugin-ui \
+    deephaven-plugin-plotly-express
 
 COPY init.sh /sbin/init.sh
 RUN chmod +x /sbin/init.sh
