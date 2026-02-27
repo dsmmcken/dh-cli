@@ -51,7 +51,7 @@ Examples:
 
 	flags := cmd.Flags()
 	flags.IntVar(&servePortFlag, "port", 10000, "Server port")
-	flags.StringVar(&serveJVMArgsFlag, "jvm-args", "-Xmx4g", "JVM arguments (quoted string)")
+	flags.StringVar(&serveJVMArgsFlag, "jvm-args", "-Xmx4g -DAuthHandlers=io.deephaven.auth.AnonymousAuthenticationHandler", "JVM arguments (quoted string)")
 	flags.BoolVar(&serveNoBrowserFlag, "no-browser", false, "Don't open browser automatically")
 	flags.StringVar(&serveIframeFlag, "iframe", "", "Open browser to iframe URL for the given widget name")
 	flags.StringVar(&serveVersionFlag, "version", "", "Deephaven version to use")

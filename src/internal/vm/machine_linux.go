@@ -272,9 +272,11 @@ func RestoreFromSnapshot(ctx context.Context, cfg *VMConfig, paths *VMPaths, std
 	}
 
 	socketPath := filepath.Join(instanceDir, "firecracker.sock")
-	// Vsock UDS path must match the path embedded in the snapshot state —
-	// Firecracker re-binds the vsock at the same absolute path on restore.
-	vsockPath := filepath.Join(snapDir, "vsock.sock")
+
+	// Firecracker embeds the vsock UDS path in the snapshot state and always
+	// re-binds at that same absolute path on restore. This is always
+	// {snapDir}/vsock.sock regardless of VsockUDSPath.
+	snapVsockPath := filepath.Join(snapDir, "vsock.sock")
 
 	// Use snapshot disk directly — the VM is ephemeral and destroyed after exec.
 	// This avoids copying a multi-GB disk image on every invocation.
@@ -287,6 +289,7 @@ func RestoreFromSnapshot(ctx context.Context, cfg *VMConfig, paths *VMPaths, std
 	// KernelImagePath and MachineCfg are required by SDK validation even for restore.
 	vcpuCount := int64(DefaultVCPUCount)
 	memSize := int64(DefaultMemSizeMiB)
+	diskReadOnly := cfg.ReadOnlyDisk
 	fcCfg := firecracker.Config{
 		SocketPath:      socketPath,
 		KernelImagePath: paths.Kernel,
@@ -295,13 +298,13 @@ func RestoreFromSnapshot(ctx context.Context, cfg *VMConfig, paths *VMPaths, std
 				DriveID:      firecracker.String("rootfs"),
 				PathOnHost:   firecracker.String(diskPath),
 				IsRootDevice: firecracker.Bool(true),
-				IsReadOnly:   firecracker.Bool(false),
+				IsReadOnly:   firecracker.Bool(diskReadOnly),
 			},
 		},
 		VsockDevices: []firecracker.VsockDevice{
 			{
 				ID:   "vsock0",
-				Path: vsockPath,
+				Path: snapVsockPath,
 				CID:  VsockCID,
 			},
 		},
@@ -393,7 +396,8 @@ func RestoreFromSnapshot(ctx context.Context, cfg *VMConfig, paths *VMPaths, std
 
 	// Remove stale vsock socket from previous runs — Firecracker will re-bind
 	// this path during snapshot restore and fails with EADDRINUSE if it exists.
-	os.Remove(vsockPath)
+	// Always remove the snapshot-relative path (where Firecracker actually binds).
+	os.Remove(snapVsockPath)
 
 	// Page cache warming is started earlier by the caller (WarmSnapshotPageCacheAsync)
 	// to maximize overlap. No additional warming needed here.
@@ -432,12 +436,29 @@ func RestoreFromSnapshot(ctx context.Context, cfg *VMConfig, paths *VMPaths, std
 	// Probing here wastes a full connect/accept cycle + triggers page faults
 	// on a throwaway connection.
 
+	// Determine the vsock path to expose. Firecracker always binds at
+	// snapVsockPath. For pool VMs (VsockUDSPath set), rename the socket
+	// to a per-instance path so multiple VMs from the same snapshot don't
+	// collide. The calling code serializes restores to avoid races.
+	effectiveVsockPath := snapVsockPath
+	if cfg.VsockUDSPath != "" {
+		if err := os.Rename(snapVsockPath, cfg.VsockUDSPath); err != nil {
+			machine.StopVMM()
+			if uffd != nil {
+				uffd.Close()
+			}
+			os.RemoveAll(instanceDir)
+			return nil, nil, nil, fmt.Errorf("renaming vsock socket to %s: %w", cfg.VsockUDSPath, err)
+		}
+		effectiveVsockPath = cfg.VsockUDSPath
+	}
+
 	pid, _ := machine.PID()
 	info := &InstanceInfo{
 		ID:        instanceID,
 		PID:       pid,
 		Version:   version,
-		VsockPath: vsockPath,
+		VsockPath: effectiveVsockPath,
 	}
 
 	// Write instance info for crash recovery

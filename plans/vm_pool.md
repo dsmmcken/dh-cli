@@ -46,7 +46,7 @@ This requires `RestoreFromSnapshot` to accept a per-instance vsock UDS path inst
 
 Explicit start is also available for pre-warming:
 ```bash
-dh vm pool start              # Start with defaults (N=2, idle=5m)
+dh vm pool start              # Start with defaults (N=1, idle=5m)
 dh vm pool start -n 5         # 5 warm VMs
 dh vm pool start --idle-timeout 30m  # 30 minute idle timeout
 dh vm pool start --no-idle-timeout   # Keep alive until explicit stop
@@ -69,6 +69,16 @@ dh vm pool stop               # Graceful shutdown (drain + destroy)
 dh vm pool status             # Show pool state: size, idle time, version
 ```
 
+#### Dynamic Resizing
+
+The pool can be resized while running:
+```bash
+dh vm pool scale 3            # Scale up to 3 warm VMs
+dh vm pool scale 1            # Scale back down to 1
+```
+
+The daemon receives the scale request over its Unix socket. Scaling up starts restoring additional VMs in background goroutines. Scaling down marks excess VMs for drain — they are destroyed as they become idle (not mid-request). The new size persists until the daemon restarts.
+
 #### Idle Timeout Defaults
 
 | Context | Default | Rationale |
@@ -76,7 +86,7 @@ dh vm pool status             # Show pool state: size, idle time, version
 | Auto-started | 5 minutes | Interactive use — don't waste memory if user walks away |
 | Explicit start | 5 minutes | Same default, overridable with `--idle-timeout` or `--no-idle-timeout` |
 
-Each warm VM costs ~4.5GB memory. At N=2 that's 9GB of idle memory, so aggressive auto-shutdown is appropriate.
+Each warm VM costs ~4.5GB memory. At N=1 that's 4.5GB idle, which is reasonable for a default. Scale up with `-n` for batch workloads.
 
 ### Request Flow (Hot Path)
 
@@ -205,23 +215,24 @@ Add idle timer to the daemon. Configurable timeout with `--idle-timeout` flag.
 
 | Pool Size | Memory | vCPUs (shared) | Warm-up Time |
 |-----------|--------|-----------------|--------------|
-| 1 | 4.5 GB | 2 | ~1s |
-| 2 (default) | 9 GB | 4 | ~2s |
+| 1 (default) | 4.5 GB | 2 | ~1s |
+| 2 | 9 GB | 4 | ~2s |
 | 3 | 13.5 GB | 6 | ~3s |
 | 5 | 22.5 GB | 10 | ~5s |
 
-Pool size of 2 is the sweet spot for interactive use: one VM is always ready while the other backfills after use.
+Pool size of 1 is the default — one warm VM ready, backfill starts immediately after use. For rapid-fire batch workloads, `-n 2` keeps one executing while one warms up.
 
 ## CLI Surface
 
 ```
 dh vm pool start [flags]     Start the VM pool daemon
-  -n, --pool-size int         Number of warm VMs (default 2)
+  -n, --pool-size int         Number of warm VMs (default 1)
   --idle-timeout duration     Auto-shutdown after idle period (default 5m, 0 to disable)
   --version string            Deephaven version (default: resolved)
   -v, --verbose               Verbose logging
 
 dh vm pool stop              Stop the pool daemon gracefully
+dh vm pool scale N           Resize the pool (add or drain VMs live)
 dh vm pool status            Show pool state
 dh vm pool status --json     JSON output
 ```

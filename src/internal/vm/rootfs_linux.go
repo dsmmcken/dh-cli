@@ -54,6 +54,7 @@ const initScriptTemplate = `#!/bin/bash
 mount -t proc proc /proc
 mount -t sysfs sysfs /sys
 mount -t devtmpfs devtmpfs /dev
+mount -t tmpfs tmpfs /tmp
 
 # Ensure loopback interface is up (required for localhost TCP after snapshot restore)
 ip link set lo up

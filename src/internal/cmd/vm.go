@@ -66,6 +66,7 @@ Requirements: Linux, /dev/kvm access, Docker.`,
 	cleanCmd.Flags().StringVar(&vmVersionFlag, "version", "", "Clean only this version (default: all)")
 
 	vmCmd.AddCommand(prepareCmd, statusCmd, cleanCmd)
+	addPoolCommands(vmCmd)
 	parent.AddCommand(vmCmd)
 }
 

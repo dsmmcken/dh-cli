@@ -45,7 +45,7 @@ Examples:
 
 	flags := cmd.Flags()
 	flags.IntVar(&replPortFlag, "port", 10000, "Server port")
-	flags.StringVar(&replJVMArgsFlag, "jvm-args", "-Xmx4g", "JVM arguments (quoted string)")
+	flags.StringVar(&replJVMArgsFlag, "jvm-args", "-Xmx4g -DAuthHandlers=io.deephaven.auth.AnonymousAuthenticationHandler", "JVM arguments (quoted string)")
 	flags.StringVar(&replVersionFlag, "version", "", "Deephaven version to use")
 	flags.StringVar(&replHostFlag, "host", "", "Remote server host (enables remote mode)")
 	flags.StringVar(&replAuthTypeFlag, "auth-type", "", "Authentication type for remote connection")

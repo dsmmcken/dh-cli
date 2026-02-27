@@ -35,6 +35,17 @@ type VMConfig struct {
 	Version string // Deephaven version
 	Verbose bool
 	UseUffd bool // use UFFD eager page population for snapshot restore
+
+	// VsockUDSPath overrides the default vsock UDS path derived from the
+	// snapshot directory. Pool VMs set this to an instance-specific path so
+	// multiple VMs from the same snapshot don't collide on the socket.
+	VsockUDSPath string
+
+	// ReadOnlyDisk mounts the root disk as read-only. Pool VMs use this
+	// because /tmp is a tmpfs (added to the init script), so nothing needs
+	// to write to the ext4 disk. This allows concurrent VMs to share the
+	// same disk image safely.
+	ReadOnlyDisk bool
 }
 
 // VMPaths returns canonical paths for VM artifacts.
