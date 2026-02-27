@@ -21,6 +21,7 @@ This CLI (`dhg`) manages the Deephaven environment on your machine: installing v
 - **Per-directory versions** — Pin a project to a specific Deephaven version with `.dhgrc`
 - **JSON output** — Every command supports `--json` for scripting and automation
 - **Cross-platform** — Linux and macOS, with cross-compilation for 6 OS/arch targets
+- **VM execution** — Near-instant Deephaven startup via Firecracker microVM snapshots (Linux)
 
 ## Requirements
 
@@ -214,8 +215,30 @@ dhg exec script.py --json                           # JSON output
 | `--tls-ca-cert PATH` | Path to CA certificate for TLS | |
 | `--tls-client-cert PATH` | Path to client certificate for TLS | |
 | `--tls-client-key PATH` | Path to client private key for TLS | |
+| `--vm` | Execute in a Firecracker microVM (Linux only) | off |
 
 By default, table previews are shown when tables are created or assigned. The embedded Python runner uses AST-based variable capture, stdout/stderr multiplexing, and exception handling with full tracebacks. Exit code is propagated from user code.
+
+#### VM mode (`--vm`)
+
+The `--vm` flag runs code inside a Firecracker microVM that is restored from a pre-built snapshot, achieving near-instant Deephaven server startup (~20ms restore). This mode requires no host-side Java or Python — the VM contains a complete Deephaven environment.
+
+```bash
+dhg exec --vm -c "print('hello')"                                  # Inline code
+dhg exec --vm script.py                                             # Script file
+dhg exec --vm -c "from deephaven import read_csv; t = read_csv('./data.csv')"  # Reads host files transparently
+```
+
+VM mode transparently proxies file access: scripts can read files from the host working directory using relative paths (e.g., `read_csv("./data.csv")`). An LD_PRELOAD library inside the VM intercepts file operations for `/workspace/*` paths and fetches files on demand from the host over vsock.
+
+**Requirements**: Linux, `/dev/kvm` access, a prepared snapshot (see `dhg vm prepare`).
+
+**First-time setup**:
+
+```bash
+dhg vm prepare                    # Build rootfs + snapshot (~2-5 min, requires Docker)
+dhg exec --vm -c "print('ready')" # Verify
+```
 
 ### `dhg serve` — Run script and keep server alive
 
@@ -238,6 +261,44 @@ dhg serve dashboard.py --no-browser       # Don't open browser
 | `--version VERSION` | Deephaven version to use | resolved |
 
 Opens the browser automatically when the server is ready. Server runs until Ctrl+C (first signal graceful shutdown, second force kill).
+
+### `dhg vm` — Manage Firecracker microVMs (experimental, Linux only)
+
+Manage Firecracker microVMs with snapshotted Deephaven servers for near-instant startup.
+
+#### `dhg vm prepare` — Build rootfs and create snapshot
+
+Prepares a Firecracker VM snapshot for fast execution. Downloads Firecracker and a Linux kernel (if needed), builds an ext4 rootfs image with JVM + Deephaven via Docker, boots a VM, waits for full initialization, then snapshots the running state.
+
+```bash
+dhg vm prepare                    # Prepare snapshot for resolved version
+dhg vm prepare --version 0.36.0   # Prepare snapshot for specific version
+```
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `--version VERSION` | Deephaven version to prepare | resolved version |
+
+First run takes 2-5 minutes. Subsequent runs for the same version skip the rootfs build.
+
+**Requirements**: Linux, `/dev/kvm` access, Docker.
+
+#### `dhg vm status` — Show VM status
+
+```bash
+dhg vm status                     # Show prerequisites and available snapshots
+```
+
+#### `dhg vm clean` — Remove VM artifacts
+
+```bash
+dhg vm clean                      # Remove all VM artifacts
+dhg vm clean --version 0.36.0     # Remove artifacts for specific version
+```
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `--version VERSION` | Clean only this version | all versions |
 
 ### `dhg list` — List running Deephaven servers
 
@@ -434,6 +495,7 @@ src/                         # Main source module
 │   ├── tui/                   # Bubbletea TUI app
 │   │   ├── components/        # Reusable TUI components
 │   │   └── screens/           # Individual TUI screens
+│   ├── vm/                    # Firecracker VM management (snapshot, rootfs, vsock)
 │   └── versions/              # Install, uninstall, list, PyPI client
 ├── go.mod
 └── Makefile
