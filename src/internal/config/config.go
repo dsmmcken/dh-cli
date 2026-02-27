@@ -9,7 +9,7 @@ import (
 	"github.com/pelletier/go-toml/v2"
 )
 
-// Config represents the ~/.dhg/config.toml file.
+// Config represents the ~/.dh/config.toml file.
 type Config struct {
 	DefaultVersion string  `toml:"default_version,omitempty" json:"default_version"`
 	Install        Install `toml:"install,omitempty" json:"install"`
@@ -21,38 +21,38 @@ type Install struct {
 	PythonVersion string   `toml:"python_version,omitempty" json:"python_version"`
 }
 
-// configDirOverride is set by the --config-dir flag or DHG_HOME env var.
+// configDirOverride is set by the --config-dir flag or DH_HOME env var.
 var configDirOverride string
 
-// SetConfigDir allows the CLI to pass in the --config-dir / DHG_HOME value.
+// SetConfigDir allows the CLI to pass in the --config-dir / DH_HOME value.
 func SetConfigDir(dir string) {
 	configDirOverride = dir
 }
 
-// DHGHome returns the config directory path.
-// Precedence: --config-dir flag / SetConfigDir > DHG_HOME env > ~/.dhg
-func DHGHome() string {
+// DHHome returns the config directory path.
+// Precedence: --config-dir flag / SetConfigDir > DH_HOME env > ~/.dh
+func DHHome() string {
 	if configDirOverride != "" {
 		return configDirOverride
 	}
-	if v := os.Getenv("DHG_HOME"); v != "" {
+	if v := os.Getenv("DH_HOME"); v != "" {
 		return v
 	}
 	home, err := os.UserHomeDir()
 	if err != nil {
-		return filepath.Join(".", ".dhg")
+		return filepath.Join(".", ".dh")
 	}
-	return filepath.Join(home, ".dhg")
+	return filepath.Join(home, ".dh")
 }
 
 // ConfigPath returns the full path to config.toml.
 func ConfigPath() string {
-	return filepath.Join(DHGHome(), "config.toml")
+	return filepath.Join(DHHome(), "config.toml")
 }
 
 // EnsureDir creates the DHG home directory if it does not exist.
 func EnsureDir() error {
-	return os.MkdirAll(DHGHome(), 0o755)
+	return os.MkdirAll(DHHome(), 0o755)
 }
 
 // Load reads config.toml and returns a Config struct.

@@ -67,11 +67,11 @@ type MainMenu struct {
 	help     help.Model
 	width    int
 	height   int
-	dhgHome  string
+	dhHome  string
 	status   string
 }
 
-func NewMainMenu(dhgHome string) MainMenu {
+func NewMainMenu(dhHome string) MainMenu {
 	items := []menuItem{
 		{title: "Manage versions", desc: "Install, remove, and switch between Deephaven versions"},
 		{title: "Running servers", desc: "View and manage active Deephaven processes"},
@@ -81,19 +81,19 @@ func NewMainMenu(dhgHome string) MainMenu {
 	}
 
 	// Build status line
-	status := buildStatusLine(dhgHome)
+	status := buildStatusLine(dhHome)
 
 	return MainMenu{
 		items:   items,
 		cursor:  0,
 		keys:    defaultMenuKeys,
 		help:    help.New(),
-		dhgHome: dhgHome,
+		dhHome: dhHome,
 		status:  status,
 	}
 }
 
-func buildStatusLine(dhgHome string) string {
+func buildStatusLine(dhHome string) string {
 	var parts []string
 
 	cfg, err := config.Load()
@@ -144,15 +144,15 @@ func (m MainMenu) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m MainMenu) selectItem() tea.Cmd {
 	switch m.cursor {
 	case 0:
-		return pushScreen(NewVersionsScreen(m.dhgHome))
+		return pushScreen(NewVersionsScreen(m.dhHome))
 	case 1:
 		return pushScreen(NewServersScreen())
 	case 2:
-		return pushScreen(NewJavaCheckScreen(m.dhgHome, false))
+		return pushScreen(NewJavaCheckScreen(m.dhHome, false))
 	case 3:
-		return pushScreen(NewDoctorScreen(m.dhgHome))
+		return pushScreen(NewDoctorScreen(m.dhHome))
 	case 4:
-		return pushScreen(NewConfigScreen(m.dhgHome))
+		return pushScreen(NewConfigScreen(m.dhHome))
 	}
 	return nil
 }

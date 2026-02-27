@@ -19,7 +19,7 @@ The CLI has been fully rewritten in Go (`go_src/`). The legacy Python CLI code (
 
 ## Keep
 - `go_src/` — all Go source (including `go_src/internal/vm/vm_runner.py` which runs inside the VM)
-- `GO_README.md` — documents the Go `dhg` CLI
+- `GO_README.md` — documents the Go `dh` CLI
 - `plans/` — design docs
 
 ## After deletion
@@ -27,5 +27,5 @@ The CLI has been fully rewritten in Go (`go_src/`). The legacy Python CLI code (
 
 ## Verification
 - `git status` shows only deletions + the README rename
-- `cd go_src && go build ./cmd/dhg` still builds
+- `cd go_src && go build ./cmd/dh` still builds
 - `cd go_unit_tests && go test ./...` still passes

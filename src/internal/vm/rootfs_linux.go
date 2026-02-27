@@ -120,7 +120,7 @@ func buildRootfsDocker(paths *VMPaths, version string, stderr io.Writer) error {
 	rootfsPath := paths.RootfsForVersion(version)
 
 	// Create temp build context
-	tmpDir, err := os.MkdirTemp("", "dhg-vm-build-*")
+	tmpDir, err := os.MkdirTemp("", "dh-vm-build-*")
 	if err != nil {
 		return fmt.Errorf("creating temp dir: %w", err)
 	}
@@ -147,7 +147,7 @@ func buildRootfsDocker(paths *VMPaths, version string, stderr io.Writer) error {
 		return fmt.Errorf("writing libworkspace.c: %w", err)
 	}
 
-	imageName := fmt.Sprintf("dhg-vm-%s", version)
+	imageName := fmt.Sprintf("dh-vm-%s", version)
 
 	// Docker build
 	fmt.Fprintf(stderr, "Building Docker image %s...\n", imageName)
@@ -159,7 +159,7 @@ func buildRootfsDocker(paths *VMPaths, version string, stderr io.Writer) error {
 	}
 
 	// Create container (remove any stale one from a previous interrupted run first)
-	containerName := "dhg-vm-export-tmp"
+	containerName := "dh-vm-export-tmp"
 	exec.Command("docker", "rm", "-f", containerName).Run()
 	createCmd := exec.Command("docker", "create", "--name", containerName, imageName)
 	createOut, err := createCmd.Output()
@@ -238,7 +238,7 @@ func canSudo() bool {
 // Uses sudo if available (needed in Docker where fakeroot hangs), otherwise
 // falls back to fakeroot for environments without root access.
 func createExt4FromTar(tarPath, outputPath string, stderr io.Writer) error {
-	extractDir, err := os.MkdirTemp("", "dhg-rootfs-extract-*")
+	extractDir, err := os.MkdirTemp("", "dh-rootfs-extract-*")
 	if err != nil {
 		return fmt.Errorf("creating extract dir: %w", err)
 	}

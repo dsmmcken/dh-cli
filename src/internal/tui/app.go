@@ -20,15 +20,15 @@ type App struct {
 	height int
 }
 
-// NewApp creates a new App with the given mode. The dhgHome parameter
+// NewApp creates a new App with the given mode. The dhHome parameter
 // is used by screens that need to access the config directory.
-func NewApp(mode AppMode, dhgHome string) App {
+func NewApp(mode AppMode, dhHome string) App {
 	var initial tea.Model
 	switch mode {
 	case WizardMode:
 		initial = screens.NewWelcomeScreen()
 	case MenuMode:
-		initial = screens.NewMainMenu(dhgHome)
+		initial = screens.NewMainMenu(dhHome)
 	}
 	return App{
 		stack: []tea.Model{initial},

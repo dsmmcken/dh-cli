@@ -2,7 +2,7 @@
 
 ## Context
 
-The existing `dh` CLI is a ~4600-line Python tool built with argparse and Textual. We're migrating to Go for faster startup, single-binary distribution, and the Charm TUI ecosystem (Bubbletea, Bubbles, Huh, Lipgloss). During migration, the new tool lives as `dhg` with config in `~/.dhg`, running alongside `dh` without conflict.
+The existing `dh` CLI is a ~4600-line Python tool built with argparse and Textual. We're migrating to Go for faster startup, single-binary distribution, and the Charm TUI ecosystem (Bubbletea, Bubbles, Huh, Lipgloss). During migration, the new tool lives as `dh` with config in `~/.dh`, running alongside `dh` without conflict.
 
 Source code goes in `go_src/`, tests in `go_behaviour_tests/` and `go_unit_tests/`. The Go binary is packaged as a Python wheel via `go-to-wheel` and installed with `uv tool install`.
 
@@ -14,9 +14,9 @@ Phase 1 covers: setup wizard, version management, Java management, server discov
 
 Every feature is accessible both ways:
 
-1. **Interactive TUI** — `dhg` with no args (or `dhg setup`). Bubbletea app with Huh forms, Bubbles components, Lipgloss styling. For humans at a terminal.
+1. **Interactive TUI** — `dh` with no args (or `dh setup`). Bubbletea app with Huh forms, Bubbles components, Lipgloss styling. For humans at a terminal.
 
-2. **CLI commands with flags** — `dhg <command> [flags]`. Non-interactive, structured output. Every command supports `--json` for machine-parseable output. For AI agents and scripts.
+2. **CLI commands with flags** — `dh <command> [flags]`. Non-interactive, structured output. Every command supports `--json` for machine-parseable output. For AI agents and scripts.
 
 ---
 
@@ -33,7 +33,7 @@ Available on every subcommand:
 | `--help` | `-h` | | Help for the command. |
 | `--version` | | | Print dhg version (root only). |
 
-Environment variables: `DHG_HOME` (config dir), `NO_COLOR` (standard), `DHG_JSON=1`.
+Environment variables: `DH_HOME` (config dir), `NO_COLOR` (standard), `DH_JSON=1`.
 
 `--json` implies `--quiet` for human text. `--verbose` and `--quiet` are mutually exclusive.
 
@@ -43,58 +43,58 @@ Environment variables: `DHG_HOME` (config dir), `NO_COLOR` (standard), `DHG_JSON
 
 ```
 dhg                              # No args → TUI (setup wizard or main menu)
-dhg setup                        # Run setup wizard explicitly
+dh setup                        # Run setup wizard explicitly
   --non-interactive              # Auto-detect Java, install latest DH, for CI
 
-dhg install [VERSION]            # Install a Deephaven version
+dh install [VERSION]            # Install a Deephaven version
   --no-plugins                   # Skip plugin installation
   --python <ver>                 # Python version for venv (default: 3.13)
 
-dhg uninstall <VERSION>          # Remove an installed version
+dh uninstall <VERSION>          # Remove an installed version
   --force                        # Skip confirmation
 
-dhg use <VERSION>                # Set default version
-  --local                        # Write .dhgrc in cwd instead of global config
+dh use <VERSION>                # Set default version
+  --local                        # Write .dhrc in cwd instead of global config
 
-dhg versions                     # List installed versions
+dh versions                     # List installed versions
   --remote                       # Also show PyPI versions
   --limit <n>                    # Max remote versions (default: 20)
   --all                          # Show all remote versions
 
-dhg java                         # Show Java status
-dhg java install                 # Download Eclipse Temurin JDK 21
+dh java                         # Show Java status
+dh java install                 # Download Eclipse Temurin JDK 21
   --jdk-version <ver>            # JDK version (default: 21)
   --force                        # Re-download if already present
 
-dhg list                         # List running Deephaven servers
-dhg kill <PORT>                  # Stop a server by port
+dh list                         # List running Deephaven servers
+dh kill <PORT>                  # Stop a server by port
 
-dhg doctor                       # Check environment health
+dh doctor                       # Check environment health
   --fix                          # Attempt auto-fix
 
-dhg config                       # Show all config
-dhg config set <KEY> <VALUE>     # Set a value
-dhg config get <KEY>             # Get a value (raw, for scripts)
-dhg config path                  # Print config file path
+dh config                       # Show all config
+dh config set <KEY> <VALUE>     # Set a value
+dh config get <KEY>             # Get a value (raw, for scripts)
+dh config path                  # Print config file path
 ```
 
 ---
 
 ## Command Details
 
-### `dhg` (no args)
+### `dh` (no args)
 
 If TTY attached and no versions installed → launch setup wizard.
 If TTY attached and versions installed → launch main menu TUI.
 If not TTY → print help and exit.
 
-### `dhg setup`
+### `dh setup`
 
 Walk through: Java detection → Java install if needed → version picker → install → done.
 
 ```bash
-dhg setup                           # Interactive wizard
-dhg setup --non-interactive --json  # CI: auto-setup, JSON result
+dh setup                           # Interactive wizard
+dh setup --non-interactive --json  # CI: auto-setup, JSON result
 ```
 
 JSON output:
@@ -105,13 +105,13 @@ JSON output:
 }
 ```
 
-### `dhg install [VERSION]`
+### `dh install [VERSION]`
 
-Install into `~/.dhg/versions/<VERSION>/.venv`. Default: latest from PyPI.
+Install into `~/.dh/versions/<VERSION>/.venv`. Default: latest from PyPI.
 
 ```bash
-dhg install              # Latest
-dhg install 42.0 --json  # Specific version, JSON output
+dh install              # Latest
+dh install 42.0 --json  # Specific version, JSON output
 ```
 
 JSON output:
@@ -119,23 +119,23 @@ JSON output:
 {
   "version": "42.0",
   "status": "installed",
-  "path": "/home/user/.dhg/versions/42.0",
+  "path": "/home/user/.dh/versions/42.0",
   "set_as_default": true,
   "elapsed_seconds": 42.3
 }
 ```
 
-### `dhg uninstall <VERSION>`
+### `dh uninstall <VERSION>`
 
 Remove a version. Prompts for confirmation unless `--force`.
 
-### `dhg use <VERSION>`
+### `dh use <VERSION>`
 
-Set default. `--local` writes `.dhgrc` in cwd.
+Set default. `--local` writes `.dhrc` in cwd.
 
-JSON: `{"version": "42.0", "scope": "global", "config_path": "~/.dhg/config.toml"}`
+JSON: `{"version": "42.0", "scope": "global", "config_path": "~/.dh/config.toml"}`
 
-### `dhg versions`
+### `dh versions`
 
 List installed versions. `--remote` adds PyPI versions.
 
@@ -150,17 +150,17 @@ JSON:
 }
 ```
 
-### `dhg java`
+### `dh java`
 
-Show detection result. Checks JAVA_HOME, PATH, `~/.dhg/java/`.
+Show detection result. Checks JAVA_HOME, PATH, `~/.dh/java/`.
 
 JSON: `{"found": true, "version": "21.0.5", "path": "...", "home": "...", "source": "JAVA_HOME"}`
 
-### `dhg java install`
+### `dh java install`
 
-Download Eclipse Temurin JDK 21 to `~/.dhg/java/`.
+Download Eclipse Temurin JDK 21 to `~/.dh/java/`.
 
-### `dhg list`
+### `dh list`
 
 Discover running Deephaven servers. Linux: `/proc/net/tcp`. macOS: `lsof`. Docker: `docker ps`.
 
@@ -174,11 +174,11 @@ JSON:
 }
 ```
 
-### `dhg kill <PORT>`
+### `dh kill <PORT>`
 
 Stop server on port. SIGTERM for processes, `docker stop` for containers.
 
-### `dhg doctor`
+### `dh doctor`
 
 Check: uv installed, Java found, versions installed, default set, disk space.
 
@@ -195,9 +195,9 @@ JSON:
 }
 ```
 
-### `dhg config` / `config set` / `config get` / `config path`
+### `dh config` / `config set` / `config get` / `config path`
 
-View and modify `~/.dhg/config.toml`.
+View and modify `~/.dh/config.toml`.
 
 ---
 
@@ -255,7 +255,7 @@ Press `?` to expand full help:
 - **Window resize**: `tea.WindowSizeMsg` recalculates layout. Logo hidden if terminal height < 20 rows. Description lines hidden if height < 15.
 - **Wrapping**: Cursor wraps — down from last item goes to first, up from first goes to last.
 
-### Setup Wizard Flow (first run or `dhg setup`)
+### Setup Wizard Flow (first run or `dh setup`)
 
 Uses Huh forms for the multi-step wizard. Each step is a Huh group. Progress shown as `Step N of M` in header.
 
@@ -303,7 +303,7 @@ If Java missing:
   ✗ No compatible Java found
 
   Deephaven requires Java 17+.
-  We can install Eclipse Temurin 21 to ~/.dhg/java/
+  We can install Eclipse Temurin 21 to ~/.dh/java/
   (no sudo required).
 
   > Install Java
@@ -350,9 +350,9 @@ Bubbles `progress` bar. Installation runs in a goroutine via `tea.Cmd`.
   Deephaven 42.0 installed and set as default.
 
   Quick start:
-    dhg versions       Manage versions
-    dhg list           See running servers
-    dhg doctor         Check environment
+    dh versions       Manage versions
+    dh list           See running servers
+    dh doctor         Check environment
 
   > Done
 
@@ -412,7 +412,7 @@ Press `?`:
   ✓ Java       21.0.5 (JAVA_HOME)
   ✓ Versions   2 installed
   ✓ Default    42.0
-  ⚠ Disk       2.1 GB free in ~/.dhg
+  ⚠ Disk       2.1 GB free in ~/.dh
 
   Everything looks good (1 warning).
 
@@ -421,10 +421,10 @@ Press `?`:
 
 ---
 
-## `~/.dhg/` Directory Structure
+## `~/.dh/` Directory Structure
 
 ```
-~/.dhg/
+~/.dh/
   config.toml              # User config
   state.json               # Tool state (first_run_completed, etc.)
   versions/
@@ -453,8 +453,8 @@ python_version = "3.13"
 ### Version Resolution Precedence
 
 1. `--version` flag
-2. `DHG_VERSION` env var
-3. `.dhgrc` in cwd (walk up)
+2. `DH_VERSION` env var
+3. `.dhrc` in cwd (walk up)
 4. `config.toml` default_version
 5. Latest installed version
 
@@ -491,7 +491,7 @@ Error codes: `version_not_found`, `version_not_installed`, `java_not_found`, `uv
 
 ## First Launch: CWD Venv Detection
 
-On first run, `dhg` also checks if the current directory has a venv with deephaven-server:
+On first run, `dh` also checks if the current directory has a venv with deephaven-server:
 
 1. Look for `.venv/` or `venv/` in cwd
 2. Check for `deephaven_server` in site-packages
@@ -520,7 +520,7 @@ go_src/
     doctor.go
     config.go              # config command group
   internal/
-    config/                # Config loading, .dhgrc, version resolution
+    config/                # Config loading, .dhrc, version resolution
     java/                  # Java detection, Adoptium download
     versions/              # Install/uninstall, PyPI client, list
     discovery/             # Server discovery (/proc, lsof, docker)
@@ -536,8 +536,8 @@ go_src/
 1. Go binary cross-compiled with `CGO_ENABLED=0` (static)
 2. `go-to-wheel` packages into platform-specific Python wheels
 3. Wheel contains the binary, Python wrapper calls `os.execvp`
-4. Install: `uv tool install dhg` or `pip install dhg`
-5. `dhg` appears on PATH
+4. Install: `uv tool install dh` or `pip install dh`
+5. `dh` appears on PATH
 
 ---
 
@@ -568,11 +568,11 @@ Phase 0: Scaffold (must complete first)
 | Phase | Name | Depends On | Parallel With | Deliverable |
 |-------|------|-----------|---------------|-------------|
 | **0** | [Scaffold](dhg_phase0_scaffold.md) | — | — | Go module, Cobra root, global flags, `--version`, `--help`, test harnesses |
-| **1a** | [Config](dhg_phase1a_config.md) | 0 | 1b, 1c | `~/.dhg/`, config.toml, `.dhgrc`, `dhg config` commands |
-| **1b** | [Java](dhg_phase1b_java.md) | 0 | 1a, 1c | Java detection, Temurin install, `dhg java` commands |
-| **1c** | [Discovery](dhg_phase1c_discovery.md) | 0 | 1a, 1b | Server discovery (/proc, lsof, docker), `dhg list`, `dhg kill` |
+| **1a** | [Config](dhg_phase1a_config.md) | 0 | 1b, 1c | `~/.dh/`, config.toml, `.dhrc`, `dh config` commands |
+| **1b** | [Java](dhg_phase1b_java.md) | 0 | 1a, 1c | Java detection, Temurin install, `dh java` commands |
+| **1c** | [Discovery](dhg_phase1c_discovery.md) | 0 | 1a, 1b | Server discovery (/proc, lsof, docker), `dh list`, `dh kill` |
 | **2** | [Versions](dhg_phase2_versions.md) | 1a | 1b, 1c | Install/uninstall/use/versions via uv, PyPI client |
-| **3** | [Doctor](dhg_phase3_doctor.md) | 1a, 1b, 1c, 2 | — | `dhg doctor` integrating all subsystem checks |
+| **3** | [Doctor](dhg_phase3_doctor.md) | 1a, 1b, 1c, 2 | — | `dh doctor` integrating all subsystem checks |
 | **4** | [TUI](dhg_phase4_tui.md) | all above | — | Bubbletea main menu, setup wizard, sub-screens |
 | **5** | [Packaging](dhg_phase5_packaging.md) | all above | — | go-to-wheel → Python wheel → `uv tool install` |
 
@@ -585,8 +585,8 @@ Phase 0: Scaffold (must complete first)
 
 ### Future Phases (deferred, beyond this spec)
 
-- `dhg exec`, `dhg serve`, `dhg repl` — runtime commands that launch Deephaven
-- `dhg lint`, `dhg format`, `dhg typecheck` — dev tool wrappers
+- `dh exec`, `dh serve`, `dh repl` — runtime commands that launch Deephaven
+- `dh lint`, `dh format`, `dh typecheck` — dev tool wrappers
 
 ---
 
@@ -598,7 +598,7 @@ Two test suites with strict separation of concerns.
 
 ```
 go_unit_tests/          # White-box tests — imports internal packages
-  config_test.go        # Config loading, version resolution, .dhgrc
+  config_test.go        # Config loading, version resolution, .dhrc
   java_test.go          # Java detection, version parsing
   versions_test.go      # Install/uninstall logic, PyPI client
   discovery_test.go     # Server discovery, /proc parsing, classification
@@ -701,7 +701,7 @@ Golden files stored in `go_unit_tests/testdata/*.golden`, updated with `go test 
 
 #### Internal Package Tests
 
-- **config**: Test TOML parsing, version resolution precedence, `.dhgrc` walk-up
+- **config**: Test TOML parsing, version resolution precedence, `.dhrc` walk-up
 - **java**: Test version string parsing, path detection logic (mock filesystem)
 - **versions**: Test `meta.toml` read/write, version sorting. Mock `exec.Command` for `uv` calls using the standard Go pattern (package-level `var execCommand = exec.Command`, replace in tests)
 - **discovery**: Test `/proc/net/tcp` parsing with fixture data, `lsof` output parsing, process classification
@@ -711,7 +711,7 @@ Golden files stored in `go_unit_tests/testdata/*.golden`, updated with `go test 
 
 ### Behaviour Tests (`go_behaviour_tests/`)
 
-Black-box tests that invoke the compiled `dhg` binary via `os/exec` or `testscript`. These tests have **zero knowledge of implementation** — they only know the CLI's public interface (commands, flags, stdout, stderr, exit codes, files written to `~/.dhg/`).
+Black-box tests that invoke the compiled `dh` binary via `os/exec` or `testscript`. These tests have **zero knowledge of implementation** — they only know the CLI's public interface (commands, flags, stdout, stderr, exit codes, files written to `~/.dh/`).
 
 Uses `testscript` (`github.com/rogpeppe/go-internal/testscript`) for declarative test scenarios in `.txtar` files.
 
@@ -736,41 +736,41 @@ func TestBehaviour(t *testing.T) {
 **`version.txtar`** — version flag and versions command:
 ```
 # --version prints version string and exits 0
-exec dhg --version
+exec dh --version
 stdout '^dhg v[0-9]+\.[0-9]+\.[0-9]+'
 ! stderr .
 
 # versions with nothing installed shows empty
-exec dhg versions --json
+exec dh versions --json
 stdout '"installed":\[\]'
 ```
 
 **`config.txtar`** — config commands:
 ```
 # config path prints the config file location
-exec dhg config path
+exec dh config path
 stdout '\.dhg/config\.toml'
 
 # config set writes a value
-exec dhg config set default_version 42.0
-exec dhg config get default_version
+exec dh config set default_version 42.0
+exec dh config get default_version
 stdout '^42\.0$'
 
 # config shows all values
-exec dhg config --json
+exec dh config --json
 stdout '"default_version":"42.0"'
 ```
 
 **`json_output.txtar`** — JSON mode contract:
 ```
 # --json flag produces valid JSON on stdout
-exec dhg doctor --json
+exec dh doctor --json
 stdout '^\{'
 stdout '"healthy"'
 stdout '"checks"'
 
 # --json errors produce JSON error objects
-! exec dhg kill 99999 --json
+! exec dh kill 99999 --json
 stdout '"error"'
 stdout '"message"'
 ```
@@ -782,18 +782,18 @@ stdout '"message"'
 stderr 'unknown command'
 
 # kill nonexistent server exits 4
-! exec dhg kill 99999
+! exec dh kill 99999
 ```
 
 **`help.txtar`** — help output:
 ```
 # --help shows usage
-exec dhg --help
+exec dh --help
 stdout 'Usage:'
-stdout 'dhg \[command\]'
+stdout 'dh \[command\]'
 
 # subcommand help
-exec dhg install --help
+exec dh install --help
 stdout 'Install a Deephaven version'
 stdout '\-\-no-plugins'
 ```
@@ -801,15 +801,15 @@ stdout '\-\-no-plugins'
 **`global_flags.txtar`** — global flag behaviour:
 ```
 # --no-color disables ANSI
-exec dhg doctor --no-color
+exec dh doctor --no-color
 ! stdout '\x1b\['
 
 # --quiet suppresses non-essential output
-exec dhg doctor --quiet
+exec dh doctor --quiet
 ! stdout 'Environment'
 
 # --json implies --quiet for human text
-exec dhg doctor --json
+exec dh doctor --json
 ! stdout 'Environment Health'
 stdout '"healthy"'
 ```
@@ -817,7 +817,7 @@ stdout '"healthy"'
 **`java.txtar`** — Java detection:
 ```
 # java command reports status as JSON
-exec dhg java --json
+exec dh java --json
 stdout '"found"'
 stdout '"version"'
 stdout '"path"'
@@ -826,12 +826,12 @@ stdout '"path"'
 **`doctor.txtar`** — doctor checks:
 ```
 # doctor runs all checks
-exec dhg doctor
+exec dh doctor
 stdout 'uv'
 stdout 'Java'
 
 # doctor --json returns structured checks
-exec dhg doctor --json
+exec dh doctor --json
 stdout '"checks"'
 stdout '"name"'
 stdout '"status"'
@@ -839,7 +839,7 @@ stdout '"status"'
 
 #### TUI Behaviour Tests
 
-Interactive TUI tests use **Netflix/go-expect** (`github.com/Netflix/go-expect`) with **vt10x** (`github.com/hinshun/vt10x`) to spawn the `dhg` binary in a pseudo-terminal. go-expect drives keystrokes, vt10x parses ANSI escape sequences into a virtual screen buffer, and assertions run against the rendered text.
+Interactive TUI tests use **Netflix/go-expect** (`github.com/Netflix/go-expect`) with **vt10x** (`github.com/hinshun/vt10x`) to spawn the `dh` binary in a pseudo-terminal. go-expect drives keystrokes, vt10x parses ANSI escape sequences into a virtual screen buffer, and assertions run against the rendered text.
 
 ```go
 // tui_test.go — helper pattern
@@ -855,7 +855,7 @@ func spawnTUI(t *testing.T, args ...string) (*expect.Console, *vt10x.VT) {
     cmd.Stdin = console.Tty()
     cmd.Stdout = console.Tty()
     cmd.Stderr = console.Tty()
-    cmd.Env = append(os.Environ(), "DHG_HOME="+t.TempDir())
+    cmd.Env = append(os.Environ(), "DH_HOME="+t.TempDir())
     require.NoError(t, cmd.Start())
     t.Cleanup(func() { console.Close(); cmd.Process.Kill() })
     return console, vt
@@ -995,32 +995,32 @@ Every feature is tested through the CLI and TUI surface:
 
 | Feature | What to Assert |
 |---------|---------------|
-| `dhg --version` | Version string format, exit 0 |
-| `dhg --help` | Usage text, all subcommands listed |
-| `dhg <cmd> --help` | Per-command help, flags documented |
-| `dhg --json` | Valid JSON on stdout, no ANSI |
-| `dhg --quiet` | Suppressed human output |
-| `dhg --no-color` | No ANSI escape sequences |
-| `dhg versions` | Lists installed versions |
-| `dhg versions --json` | JSON array of versions |
-| `dhg versions --remote` | Includes PyPI versions |
-| `dhg install <ver>` | Creates `~/.dhg/versions/<ver>/` |
-| `dhg uninstall <ver>` | Removes version dir |
-| `dhg use <ver>` | Updates config.toml |
-| `dhg use <ver> --local` | Creates `.dhgrc` in cwd |
-| `dhg java` | Reports Java status |
-| `dhg java --json` | JSON with found/version/path |
-| `dhg java install` | Creates `~/.dhg/java/` |
-| `dhg config` | Shows config |
-| `dhg config set K V` | Persists value |
-| `dhg config get K` | Returns raw value |
-| `dhg config path` | Returns file path |
-| `dhg list` | Discovers servers |
-| `dhg list --json` | JSON array of servers |
-| `dhg kill <port>` | Stops server, exit 0 |
-| `dhg kill <bad>` | Exit 4, error message |
-| `dhg doctor` | All checks reported |
-| `dhg doctor --json` | Structured check results |
+| `dh --version` | Version string format, exit 0 |
+| `dh --help` | Usage text, all subcommands listed |
+| `dh <cmd> --help` | Per-command help, flags documented |
+| `dh --json` | Valid JSON on stdout, no ANSI |
+| `dh --quiet` | Suppressed human output |
+| `dh --no-color` | No ANSI escape sequences |
+| `dh versions` | Lists installed versions |
+| `dh versions --json` | JSON array of versions |
+| `dh versions --remote` | Includes PyPI versions |
+| `dh install <ver>` | Creates `~/.dh/versions/<ver>/` |
+| `dh uninstall <ver>` | Removes version dir |
+| `dh use <ver>` | Updates config.toml |
+| `dh use <ver> --local` | Creates `.dhrc` in cwd |
+| `dh java` | Reports Java status |
+| `dh java --json` | JSON with found/version/path |
+| `dh java install` | Creates `~/.dh/java/` |
+| `dh config` | Shows config |
+| `dh config set K V` | Persists value |
+| `dh config get K` | Returns raw value |
+| `dh config path` | Returns file path |
+| `dh list` | Discovers servers |
+| `dh list --json` | JSON array of servers |
+| `dh kill <port>` | Stops server, exit 0 |
+| `dh kill <bad>` | Exit 4, error message |
+| `dh doctor` | All checks reported |
+| `dh doctor --json` | Structured check results |
 | Error cases | Correct exit codes per table |
 | Unknown commands | Exit 1, helpful error |
 | Mutual exclusivity | `--verbose` + `--quiet` rejected |
@@ -1050,15 +1050,15 @@ Every feature is tested through the CLI and TUI surface:
 
 After implementation:
 
-1. `cd go_src && go build ./cmd/dhg` — binary compiles
+1. `cd go_src && go build ./cmd/dh` — binary compiles
 2. `cd go_unit_tests && go test ./...` — all unit tests pass
 3. `cd go_behaviour_tests && go test ./...` — all behaviour tests pass
-4. `./dhg --version` — prints version
-5. `./dhg doctor --json` — JSON output with all checks
-6. `./dhg java --json` — detects Java
-7. `./dhg versions --json` — lists (empty) installed versions
-8. `./dhg` (in terminal) — launches TUI setup wizard
+4. `./dh --version` — prints version
+5. `./dh doctor --json` — JSON output with all checks
+6. `./dh java --json` — detects Java
+7. `./dh versions --json` — lists (empty) installed versions
+8. `./dh` (in terminal) — launches TUI setup wizard
 9. Walk through wizard: Java check → version pick → install → done
-10. `./dhg versions` — shows installed version
-11. `./dhg list --json` — discovers servers
-12. Package with go-to-wheel, install via `uv tool install`, verify `dhg` on PATH
+10. `./dh versions` — shows installed version
+11. `./dh list --json` — discovers servers
+12. Package with go-to-wheel, install via `uv tool install`, verify `dh` on PATH

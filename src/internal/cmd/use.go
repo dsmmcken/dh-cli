@@ -22,18 +22,18 @@ func newUseCmd() *cobra.Command {
 		RunE:  runUse,
 	}
 
-	cmd.Flags().BoolVar(&useLocalFlag, "local", false, "Write .dhgrc in the current directory instead of updating global config")
+	cmd.Flags().BoolVar(&useLocalFlag, "local", false, "Write .dhrc in the current directory instead of updating global config")
 
 	return cmd
 }
 
 func runUse(cmd *cobra.Command, args []string) error {
 	config.SetConfigDir(ConfigDir)
-	dhgHome := config.DHGHome()
+	dhHome := config.DHHome()
 	version := args[0]
 
 	// Validate version is installed
-	installed, err := versions.ListInstalled(dhgHome)
+	installed, err := versions.ListInstalled(dhHome)
 	if err != nil {
 		return err
 	}
@@ -49,7 +49,7 @@ func runUse(cmd *cobra.Command, args []string) error {
 		if output.IsJSON() {
 			return output.PrintError(cmd.ErrOrStderr(), "not_installed", fmt.Sprintf("version %s is not installed", version))
 		}
-		return fmt.Errorf("version %s is not installed; run 'dhg install %s' first", version, version)
+		return fmt.Errorf("version %s is not installed; run 'dh install %s' first", version, version)
 	}
 
 	scope := "global"
@@ -61,8 +61,8 @@ func runUse(cmd *cobra.Command, args []string) error {
 		if err != nil {
 			return fmt.Errorf("getting current directory: %w", err)
 		}
-		configPath = filepath.Join(cwd, ".dhgrc")
-		if err := config.WriteDHGRC(cwd, version); err != nil {
+		configPath = filepath.Join(cwd, ".dhrc")
+		if err := config.WriteDHRC(cwd, version); err != nil {
 			return err
 		}
 	} else {
@@ -80,7 +80,7 @@ func runUse(cmd *cobra.Command, args []string) error {
 	}
 
 	if useLocalFlag {
-		fmt.Fprintf(cmd.OutOrStdout(), "Set local version to %s (wrote .dhgrc)\n", version)
+		fmt.Fprintf(cmd.OutOrStdout(), "Set local version to %s (wrote .dhrc)\n", version)
 	} else {
 		fmt.Fprintf(cmd.OutOrStdout(), "Set default version to %s\n", version)
 	}

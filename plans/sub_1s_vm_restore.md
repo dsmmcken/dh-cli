@@ -1,8 +1,8 @@
-# Plan: Sub-1s VM Restore for `dhg exec --vm`
+# Plan: Sub-1s VM Restore for `dh exec --vm`
 
 ## Context
 
-After the balloon + sparse UFFD work, `dhg exec --vm -c "print('hello')"` takes
+After the balloon + sparse UFFD work, `dh exec --vm -c "print('hello')"` takes
 ~1.7s. The breakdown is approximately:
 
 | Phase | Time | Where |
@@ -16,7 +16,7 @@ After the balloon + sparse UFFD work, `dhg exec --vm -c "print('hello')"` takes
 | vsock I/O + JSON marshal | ~10ms | Go + Python |
 
 **Goal**: Reduce total time to under 1 second. No daemon/background processes —
-all optimizations must be within the single `dhg exec --vm` invocation.
+all optimizations must be within the single `dh exec --vm` invocation.
 
 ## Changes (ordered by impact)
 
@@ -87,7 +87,7 @@ Currently: 5 iterations of `x = 1`. This barely triggers JIT compilation.
 
 **`go_src/internal/vm/machine_linux.go`** — `BootAndSnapshot()`
 
-Replace the warmup loop with a realistic workload that mirrors actual `dhg exec`
+Replace the warmup loop with a realistic workload that mirrors actual `dh exec`
 usage. The wrapper script calls `run_script`, `empty_table`, `update`, `to_arrow`,
 pickle, and base64 — all need JIT warmup.
 
@@ -225,27 +225,27 @@ cd go_src && go vet ./... && CGO_ENABLED=0 go build -o dhg ./cmd/dhg && cp dhg ~
 
 ### 2. Rebuild snapshot (required for warmup changes)
 ```bash
-dhg vm clean --version 41.1
-dhg vm prepare --version 41.1
+dh vm clean --version 41.1
+dh vm prepare --version 41.1
 ```
 
 Watch warmup output — should see ~20 iterations with decreasing run_script times.
 
 ### 3. Test fully lazy UFFD
 ```bash
-time dhg exec --vm --verbose -c "print('hello')"
+time dh exec --vm --verbose -c "print('hello')"
 ```
 
 Should show restore time dramatically reduced (sub-200ms vs previous ~1200ms).
 
 ### 4. Compare with File backend
 ```bash
-time DHG_VM_NO_UFFD=1 dhg exec --vm --verbose -c "print('hello')"
+time DH_VM_NO_UFFD=1 dh exec --vm --verbose -c "print('hello')"
 ```
 
 ### 5. Test complex workload (verify lazy faults don't degrade)
 ```bash
-dhg exec --vm -c "
+dh exec --vm -c "
 from deephaven import empty_table
 t = empty_table(10_000_000).update(['x = i', 'y = x * x'])
 print(t.to_string(num_rows=5))

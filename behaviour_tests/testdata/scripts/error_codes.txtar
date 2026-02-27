@@ -1,2 +1,2 @@
 # unknown args exit non-zero
-! exec dhg nonexistent
+! exec dh nonexistent

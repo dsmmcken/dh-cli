@@ -1,26 +1,26 @@
 # versions with nothing installed shows empty message
-exec dhg versions
+exec dh versions
 stdout 'No Deephaven versions installed'
 ! stderr .
 
 # versions --json with nothing installed returns empty array
-exec dhg versions --json
+exec dh versions --json
 stdout '"installed": \['
 stdout '"default_version": ""'
 ! stderr .
 
 # versions --json after manual setup shows installed version
-mkdir $DHG_HOME/versions/0.36.0
-cp meta.toml $DHG_HOME/versions/0.36.0/meta.toml
-exec dhg config set default_version 0.36.0
-exec dhg versions --json
+mkdir $DH_HOME/versions/0.36.0
+cp meta.toml $DH_HOME/versions/0.36.0/meta.toml
+exec dh config set default_version 0.36.0
+exec dh versions --json
 stdout '"installed"'
 stdout '"version": "0.36.0"'
 stdout '"default_version": "0.36.0"'
 ! stderr .
 
 # versions human output shows table
-exec dhg versions
+exec dh versions
 stdout 'VERSION'
 stdout '0\.36\.0'
 ! stderr .

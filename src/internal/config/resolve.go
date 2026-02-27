@@ -10,10 +10,10 @@ import (
 // ResolveVersion determines which Deephaven version to use.
 // Precedence:
 //  1. flagVersion (from --version flag)
-//  2. envVersion (from DHG_VERSION env var)
-//  3. .dhgrc walk-up from cwd
+//  2. envVersion (from DH_VERSION env var)
+//  3. .dhrc walk-up from cwd
 //  4. config.toml default_version
-//  5. Latest installed version (scan ~/.dhg/versions/)
+//  5. Latest installed version (scan ~/.dh/versions/)
 func ResolveVersion(flagVersion, envVersion string) (string, error) {
 	// 1. Explicit flag
 	if flagVersion != "" {
@@ -25,11 +25,11 @@ func ResolveVersion(flagVersion, envVersion string) (string, error) {
 		return envVersion, nil
 	}
 
-	// 3. .dhgrc walk-up
+	// 3. .dhrc walk-up
 	cwd, err := os.Getwd()
 	if err == nil {
-		if rcPath, err := FindDHGRC(cwd); err == nil && rcPath != "" {
-			if ver, err := ReadDHGRC(rcPath); err == nil {
+		if rcPath, err := FindDHRC(cwd); err == nil && rcPath != "" {
+			if ver, err := ReadDHRC(rcPath); err == nil {
 				return ver, nil
 			}
 		}
@@ -47,13 +47,13 @@ func ResolveVersion(flagVersion, envVersion string) (string, error) {
 		return ver, nil
 	}
 
-	return "", fmt.Errorf("no Deephaven version configured; use --version, set DHG_VERSION, create .dhgrc, or run dhg install")
+	return "", fmt.Errorf("no Deephaven version configured; use --version, set DH_VERSION, create .dhrc, or run dh install")
 }
 
-// latestInstalledVersion scans ~/.dhg/versions/ and returns the latest
+// latestInstalledVersion scans ~/.dh/versions/ and returns the latest
 // directory name (sorted lexicographically, last = latest).
 func latestInstalledVersion() (string, error) {
-	versionsDir := filepath.Join(DHGHome(), "versions")
+	versionsDir := filepath.Join(DHHome(), "versions")
 	entries, err := os.ReadDir(versionsDir)
 	if err != nil {
 		return "", err

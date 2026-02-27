@@ -1,15 +1,15 @@
-# dhg java --json outputs valid JSON with expected keys
-exec dhg java --json
+# dh java --json outputs valid JSON with expected keys
+exec dh java --json
 stdout '"found":'
 stdout '"version":'
 stdout '"path":'
 stdout '"source":'
 
-# dhg java shows human-readable status
-exec dhg java
+# dh java shows human-readable status
+exec dh java
 stdout 'Java:'
 
-# dhg java install --help shows expected flags
-exec dhg java install --help
+# dh java install --help shows expected flags
+exec dh java install --help
 stdout '\-\-jdk-version'
 stdout '\-\-force'

@@ -44,10 +44,10 @@ func NewRootCmd() *cobra.Command {
 
 func newRootCmd() *cobra.Command {
 	rootCmd := &cobra.Command{
-		Use:   "dhg",
+		Use:   "dh",
 		Short: "Deephaven CLI tool",
-		Long:  "dhg — CLI tool for managing Deephaven installations, servers, and configuration.",
-		Version: fmt.Sprintf("dhg v%s", Version),
+		Long:  "dh — CLI tool for managing Deephaven installations, servers, and configuration.",
+		Version: fmt.Sprintf("dh v%s", Version),
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
@@ -69,16 +69,16 @@ func newRootCmd() *cobra.Command {
 			}
 
 			config.SetConfigDir(ConfigDir)
-			dhgHome := config.DHGHome()
+			dhHome := config.DHHome()
 
 			// Determine mode based on whether versions are installed
-			installed, _ := versions.ListInstalled(dhgHome)
+			installed, _ := versions.ListInstalled(dhHome)
 			mode := tui.WizardMode
 			if len(installed) > 0 {
 				mode = tui.MenuMode
 			}
 
-			p := tea.NewProgram(tui.NewApp(mode, dhgHome), tea.WithAltScreen())
+			p := tea.NewProgram(tui.NewApp(mode, dhHome), tea.WithAltScreen())
 			_, err := p.Run()
 			return err
 		},
@@ -91,16 +91,16 @@ func newRootCmd() *cobra.Command {
 	pflags.BoolVarP(&verboseFlag, "verbose", "v", false, "Extra detail to stderr")
 	pflags.BoolVarP(&quietFlag, "quiet", "q", false, "Suppress non-essential output")
 	pflags.BoolVar(&noColorFlag, "no-color", false, "Disable ANSI colors")
-	pflags.StringVar(&ConfigDir, "config-dir", "", "Override config directory (default: ~/.dhg)")
+	pflags.StringVar(&ConfigDir, "config-dir", "", "Override config directory (default: ~/.dh)")
 
 	// Environment variable bindings
-	if v := os.Getenv("DHG_HOME"); v != "" && ConfigDir == "" {
+	if v := os.Getenv("DH_HOME"); v != "" && ConfigDir == "" {
 		ConfigDir = v
 	}
 	if os.Getenv("NO_COLOR") != "" {
 		noColorFlag = true
 	}
-	if os.Getenv("DHG_JSON") == "1" {
+	if os.Getenv("DH_JSON") == "1" {
 		jsonFlag = true
 	}
 

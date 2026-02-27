@@ -45,14 +45,14 @@ func getDhgHome() string {
 	}
 	home, err := os.UserHomeDir()
 	if err != nil {
-		return filepath.Join(".", ".dhg")
+		return filepath.Join(".", ".dh")
 	}
-	return filepath.Join(home, ".dhg")
+	return filepath.Join(home, ".dh")
 }
 
 func runJavaStatus(cmd *cobra.Command, args []string) error {
-	dhgHome := getDhgHome()
-	info, err := java.Detect(dhgHome)
+	dhHome := getDhgHome()
+	info, err := java.Detect(dhHome)
 	if err != nil {
 		if output.IsJSON() {
 			return output.PrintError(cmd.ErrOrStderr(), "java_detect_error", err.Error())
@@ -66,7 +66,7 @@ func runJavaStatus(cmd *cobra.Command, args []string) error {
 
 	if !info.Found {
 		fmt.Fprintln(cmd.OutOrStdout(), "Java: not found")
-		fmt.Fprintln(cmd.OutOrStdout(), "Run 'dhg java install' to install Eclipse Temurin JDK.")
+		fmt.Fprintln(cmd.OutOrStdout(), "Run 'dh java install' to install Eclipse Temurin JDK.")
 		return nil
 	}
 
@@ -77,15 +77,15 @@ func runJavaStatus(cmd *cobra.Command, args []string) error {
 
 	if !java.MeetsMinimum(info.Version, java.MinimumVersion) {
 		fmt.Fprintf(cmd.OutOrStdout(), "\nWarning: Java %s does not meet minimum version %d.\n", info.Version, java.MinimumVersion)
-		fmt.Fprintln(cmd.OutOrStdout(), "Run 'dhg java install' to install a compatible version.")
+		fmt.Fprintln(cmd.OutOrStdout(), "Run 'dh java install' to install a compatible version.")
 	}
 
 	return nil
 }
 
 func runJavaInstall(cmd *cobra.Command, args []string) error {
-	dhgHome := getDhgHome()
-	info, err := java.Install(dhgHome, jdkVersionFlag, forceFlag)
+	dhHome := getDhgHome()
+	info, err := java.Install(dhHome, jdkVersionFlag, forceFlag)
 	if err != nil {
 		if output.IsJSON() {
 			return output.PrintError(cmd.ErrOrStderr(), "java_install_error", err.Error())

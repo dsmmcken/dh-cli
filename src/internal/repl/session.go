@@ -33,7 +33,7 @@ type SessionConfig struct {
 	// Resolved paths (populated by caller)
 	PythonBin string
 	JavaHome  string
-	DHGHome   string // config directory for history file
+	DHHome   string // config directory for history file
 }
 
 // Session manages the Python subprocess and JSON protocol communication.

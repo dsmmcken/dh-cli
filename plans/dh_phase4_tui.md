@@ -5,7 +5,7 @@
 
 ## Goal
 
-Implement the Bubbletea interactive TUI: main menu, setup wizard, and sub-screens. After this phase, `dhg` with no args launches a full interactive experience.
+Implement the Bubbletea interactive TUI: main menu, setup wizard, and sub-screens. After this phase, `dh` with no args launches a full interactive experience.
 
 ## Files to create/modify
 
@@ -29,7 +29,7 @@ go_src/
       components/
         logo.go             # ASCII Deephaven logo rendering
   cmd/dhg/
-    setup.go               # dhg setup command (launches wizard)
+    setup.go               # dh setup command (launches wizard)
     root.go                # Modify: no-args TTY path launches TUI
 ```
 
@@ -65,7 +65,7 @@ go_src/
 - Help bar: ShortHelp (navigate, enter, ?, q) / FullHelp (grouped columns)
 
 ### Setup Wizard
-Five screens, linear flow. Driven by `dhg setup` or auto-launched on first run.
+Five screens, linear flow. Driven by `dh setup` or auto-launched on first run.
 
 **welcome.go** — Logo, welcome text, "Get Started". Enter → push javacheck.
 
@@ -88,7 +88,7 @@ Five screens, linear flow. Driven by `dhg setup` or auto-launched on first run.
 ### Root command integration (`root.go`)
 - No args + TTY + no versions installed → `tea.NewProgram(tui.NewApp(wizardMode))`
 - No args + TTY + versions installed → `tea.NewProgram(tui.NewApp(menuMode))`
-- `dhg setup` → always launches wizard regardless of installed versions
+- `dh setup` → always launches wizard regardless of installed versions
 
 ## Tests
 
@@ -114,13 +114,13 @@ Using go-expect + vt10x (pattern from CLAUDE.md):
 - Golden file snapshots for each screen
 
 ### Behaviour tests — CLI (`go_behaviour_tests/testdata/scripts/setup.txtar`)
-- `dhg setup --non-interactive --json` → JSON output with java + deephaven status
+- `dh setup --non-interactive --json` → JSON output with java + deephaven status
 
 ## Verification
 
 ```bash
 ./dhg                     # launches TUI (wizard or menu depending on state)
-./dhg setup               # launches wizard explicitly
+./dh setup               # launches wizard explicitly
 # Navigate through all screens manually
 # Run test suites
 cd go_unit_tests && go test ./...

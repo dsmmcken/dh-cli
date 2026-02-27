@@ -32,7 +32,7 @@ func newInstallCmd() *cobra.Command {
 
 func runInstall(cmd *cobra.Command, args []string) error {
 	config.SetConfigDir(ConfigDir)
-	dhgHome := config.DHGHome()
+	dhHome := config.DHHome()
 
 	version := ""
 	if len(args) > 0 {
@@ -78,7 +78,7 @@ func runInstall(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	if err := versions.Install(dhgHome, version, pythonVer, plugins, onProgress); err != nil {
+	if err := versions.Install(dhHome, version, pythonVer, plugins, onProgress); err != nil {
 		if output.IsJSON() {
 			return output.PrintError(cmd.ErrOrStderr(), "install_error", err.Error())
 		}
@@ -101,7 +101,7 @@ func runInstall(cmd *cobra.Command, args []string) error {
 		return output.PrintJSON(cmd.OutOrStdout(), map[string]any{
 			"version":         version,
 			"status":          "installed",
-			"path":            fmt.Sprintf("%s/versions/%s", dhgHome, version),
+			"path":            fmt.Sprintf("%s/versions/%s", dhHome, version),
 			"set_as_default":  setAsDefault,
 			"elapsed_seconds": elapsed,
 		})

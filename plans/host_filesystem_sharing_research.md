@@ -1,7 +1,7 @@
 # Research: Sharing Host Filesystem Files with Firecracker MicroVM
 
 **Date:** 2026-02-27
-**Context:** The `dhg exec --vm` command restores a Firecracker microVM from snapshot, executes user Python code via vsock, and tears down the VM. The VM has a single ext4 rootfs drive, communicates via vsock (port 10000), and runs on Linux with KVM. Current architecture sends code as a string over the vsock JSON protocol. The goal is to enable user scripts to reference files from the host workspace (e.g., `import mymodule`, `open("data.csv")`) with zero or near-zero impact on the ~50ms snapshot restore time.
+**Context:** The `dh exec --vm` command restores a Firecracker microVM from snapshot, executes user Python code via vsock, and tears down the VM. The VM has a single ext4 rootfs drive, communicates via vsock (port 10000), and runs on Linux with KVM. Current architecture sends code as a string over the vsock JSON protocol. The goal is to enable user scripts to reference files from the host workspace (e.g., `import mymodule`, `open("data.csv")`) with zero or near-zero impact on the ~50ms snapshot restore time.
 
 ---
 
@@ -26,7 +26,7 @@ Configure Firecracker with two drives at snapshot creation time: the rootfs driv
 **Critical constraint:** Firecracker requires that block devices at restore time match the configuration embedded in the snapshot. You cannot *add* new drives at snapshot restore time -- all drives must have been present when the snapshot was created. However, you **can** point a drive_id at a different backing file at the same path.
 
 The approach is:
-1. During `dhg vm prepare`, configure two drives: `rootfs` (the Deephaven rootfs) and `workspace` (an empty ext4 image at a known path)
+1. During `dh vm prepare`, configure two drives: `rootfs` (the Deephaven rootfs) and `workspace` (an empty ext4 image at a known path)
 2. The guest kernel sees `/dev/vdb` and can mount it
 3. At snapshot time, both drives are part of the VM state
 4. At restore time, replace the file at the workspace drive's path with a new ext4 image containing the user's files

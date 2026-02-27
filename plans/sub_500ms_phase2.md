@@ -2,7 +2,7 @@
 
 ## Context
 
-After phase 1 (lazy UFFD + file-based results), `dhg exec --vm` is at ~745ms (930ms wall).
+After phase 1 (lazy UFFD + file-based results), `dh exec --vm` is at ~745ms (930ms wall).
 Timing breakdown from `--verbose`:
 
 ```
@@ -62,7 +62,7 @@ for _, ri := range regionInfos {
 parallelCopy(eagerJobs, copyWorkers)
 ```
 
-The 256MB threshold is tunable via `DHG_VM_EAGER_MB` env var for experimentation.
+The 256MB threshold is tunable via `DH_VM_EAGER_MB` env var for experimentation.
 
 ### Expected impact
 
@@ -163,7 +163,7 @@ CGO_ENABLED=0 go build -ldflags="-s -w -X ..." -o dhg ./cmd/dhg
 
 # Compare
 ls -lh dhg
-time dhg exec --vm --verbose -c "print('hello')"
+time dh exec --vm --verbose -c "print('hello')"
 ```
 
 ## Change 4: Reduce build_wrapper overhead (minor, ~10-20ms)
@@ -212,12 +212,12 @@ cd go_src && CGO_ENABLED=0 go build -ldflags="-s -w -X github.com/dsmmcken/dh-cl
 # No snapshot rebuild needed (changes are Go-side + lazy handler only)
 
 # Test
-time dhg exec --vm --verbose -c "print('hello')"
+time dh exec --vm --verbose -c "print('hello')"
 
 # Compare eager preload sizes
-DHG_VM_EAGER_MB=128 time dhg exec --vm --verbose -c "print('hello')"
-DHG_VM_EAGER_MB=512 time dhg exec --vm --verbose -c "print('hello')"
+DH_VM_EAGER_MB=128 time dh exec --vm --verbose -c "print('hello')"
+DH_VM_EAGER_MB=512 time dh exec --vm --verbose -c "print('hello')"
 
 # Verify complex workload still works
-dhg exec --vm -c "from deephaven import empty_table; t = empty_table(1000).update(['x = i'])"
+dh exec --vm -c "from deephaven import empty_table; t = empty_table(1000).update(['x = i'])"
 ```

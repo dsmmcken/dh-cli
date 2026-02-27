@@ -34,14 +34,14 @@ type JavaCheckScreen struct {
 	cursor   int
 	options  []string
 	wizard   bool
-	dhgHome  string
+	dhHome  string
 	width    int
 	height   int
 }
 
-func NewJavaCheckScreen(dhgHome string, wizard bool) JavaCheckScreen {
-	if dhgHome == "" {
-		dhgHome = config.DHGHome()
+func NewJavaCheckScreen(dhHome string, wizard bool) JavaCheckScreen {
+	if dhHome == "" {
+		dhHome = config.DHHome()
 	}
 	s := spinner.New()
 	s.Spinner = spinner.Dot
@@ -71,7 +71,7 @@ func NewJavaCheckScreen(dhgHome string, wizard bool) JavaCheckScreen {
 		spinner:  s,
 		checking: true,
 		wizard:   wizard,
-		dhgHome:  dhgHome,
+		dhHome:  dhHome,
 	}
 }
 
@@ -80,9 +80,9 @@ func (m JavaCheckScreen) Init() tea.Cmd {
 }
 
 func (m JavaCheckScreen) detectJava() tea.Cmd {
-	dhgHome := m.dhgHome
+	dhHome := m.dhHome
 	return func() tea.Msg {
-		info, err := java.Detect(dhgHome)
+		info, err := java.Detect(dhHome)
 		return javaResultMsg{info: info, err: err}
 	}
 }
@@ -150,7 +150,7 @@ func (m JavaCheckScreen) handleSelect() tea.Cmd {
 	if m.result != nil && m.result.Found {
 		// "Next" selected
 		if m.wizard {
-			return pushScreen(NewVersionPickerScreen(m.dhgHome))
+			return pushScreen(NewVersionPickerScreen(m.dhHome))
 		}
 		return popScreen()
 	}
@@ -159,12 +159,12 @@ func (m JavaCheckScreen) handleSelect() tea.Cmd {
 	case 0: // "Install Java"
 		// For now just go to next step
 		if m.wizard {
-			return pushScreen(NewVersionPickerScreen(m.dhgHome))
+			return pushScreen(NewVersionPickerScreen(m.dhHome))
 		}
 		return popScreen()
 	case 1: // "Skip for now"
 		if m.wizard {
-			return pushScreen(NewVersionPickerScreen(m.dhgHome))
+			return pushScreen(NewVersionPickerScreen(m.dhHome))
 		}
 		return popScreen()
 	}
@@ -196,7 +196,7 @@ func (m JavaCheckScreen) View() string {
 	} else {
 		b.WriteString("  ✗ No compatible Java found\n\n")
 		b.WriteString("  Deephaven requires Java 17+.\n")
-		b.WriteString("  We can install Eclipse Temurin 21 to ~/.dhg/java/\n")
+		b.WriteString("  We can install Eclipse Temurin 21 to ~/.dh/java/\n")
 		b.WriteString("  (no sudo required).\n\n")
 	}
 

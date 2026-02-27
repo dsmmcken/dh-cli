@@ -13,9 +13,9 @@ type InstalledVersion struct {
 	InstalledAt time.Time `json:"installed_at"`
 }
 
-// ListInstalled scans <dhgHome>/versions/ and returns installed versions sorted descending.
-func ListInstalled(dhgHome string) ([]InstalledVersion, error) {
-	versionsDir := filepath.Join(dhgHome, "versions")
+// ListInstalled scans <dhHome>/versions/ and returns installed versions sorted descending.
+func ListInstalled(dhHome string) ([]InstalledVersion, error) {
+	versionsDir := filepath.Join(dhHome, "versions")
 	entries, err := os.ReadDir(versionsDir)
 	if err != nil {
 		if os.IsNotExist(err) {

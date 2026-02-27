@@ -1,12 +1,12 @@
-# dhg list outputs human-readable text (may be empty if no servers running)
-exec dhg list
+# dh list outputs human-readable text (may be empty if no servers running)
+exec dh list
 ! stderr .
 
-# dhg list --json outputs valid JSON with "servers" key
-exec dhg list --json
+# dh list --json outputs valid JSON with "servers" key
+exec dh list --json
 stdout '"servers"'
 ! stderr .
 
-# dhg list -j is shorthand for --json
-exec dhg list -j
+# dh list -j is shorthand for --json
+exec dh list -j
 stdout '"servers"'

@@ -43,7 +43,7 @@ func TestDoctorJSONOutput(t *testing.T) {
 		return cmd.CheckResult{Name: "Default", Status: "ok", Detail: "42.0"}
 	}
 	cmd.DiskSpaceChecker = func(string) cmd.CheckResult {
-		return cmd.CheckResult{Name: "Disk", Status: "ok", Detail: "50.0 GB free in ~/.dhg"}
+		return cmd.CheckResult{Name: "Disk", Status: "ok", Detail: "50.0 GB free in ~/.dh"}
 	}
 
 	out, err := execRoot(t, "doctor", "--json")

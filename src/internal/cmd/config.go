@@ -11,8 +11,8 @@ import (
 func addConfigCommands(rootCmd *cobra.Command) {
 	configCmd := &cobra.Command{
 		Use:   "config",
-		Short: "Manage dhg configuration",
-		Long:  "Show, get, and set values in the dhg config file (~/.dhg/config.toml).",
+		Short: "Manage dh configuration",
+		Long:  "Show, get, and set values in the dh config file (~/.dh/config.toml).",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			config.SetConfigDir(ConfigDir)

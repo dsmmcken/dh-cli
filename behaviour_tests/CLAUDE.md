@@ -1,6 +1,6 @@
 # Behaviour Tests — Rules
 
-These tests verify the `dhg` CLI as a **black box**. They are the contract between the tool and its users. This includes both non-interactive CLI commands and the interactive TUI.
+These tests verify the `dh` CLI as a **black box**. They are the contract between the tool and its users. This includes both non-interactive CLI commands and the interactive TUI.
 
 Never assume a test failure is expected or okay. If a test fails, it means the tool is not working as intended and needs to be fixed. If you find yourself saying "oh that test always fails, it's just flaky", you are masking a real problem that needs attention.
 
@@ -8,19 +8,19 @@ Never assume a test failure is expected or okay. If a test fails, it means the t
 
 1. **No implementation knowledge.** Tests must never import, reference, or assume anything about the Go source code, internal packages, struct names, function signatures, or file layout of `src/`. If you find yourself needing to know how something is implemented, you are writing a unit test — put it in `unit_tests/` instead.
 
-2. **Only invoke the compiled binary.** The only way to interact with `dhg` is by running it as a subprocess. No importing Go packages. No calling functions directly.
+2. **Only invoke the compiled binary.** The only way to interact with `dh` is by running it as a subprocess. No importing Go packages. No calling functions directly.
 
 3. **Assert on public interface only.** You may assert on:
    - **stdout/stderr** content (human text or JSON)
    - **Exit codes** (0, 1, 2, 3, 4, 130)
-   - **Files on disk** created/modified by `dhg` (in `~/.dhg/`, `.dhgrc`, etc.)
+   - **Files on disk** created/modified by `dh` (in `~/.dh/`, `.dhrc`, etc.)
    - **Absence of output** (e.g. `--quiet` suppresses text, `--json` has no ANSI)
    - **Rendered TUI screen content** (text visible in the virtual terminal buffer)
    - **TUI screen transitions** (what appears after sending keystrokes)
 
 4. **100% feature coverage.** Every command, flag, flag combination, output mode, error condition, TUI screen, and TUI interaction documented in the spec must have a corresponding behaviour test. If a feature exists but has no behaviour test, it is not considered shipped.
 
-5. **Tests must be deterministic.** No reliance on network, system state, or timing. Use isolated temp directories for `~/.dhg/` via `--config-dir` or `DHG_HOME` env var. Mock external dependencies (PyPI, Adoptium API) via environment variables or fixture files where the binary supports it.
+5. **Tests must be deterministic.** No reliance on network, system state, or timing. Use isolated temp directories for `~/.dh/` via `--config-dir` or `DH_HOME` env var. Mock external dependencies (PyPI, Adoptium API) via environment variables or fixture files where the binary supports it.
 
 ---
 
@@ -32,13 +32,13 @@ For non-interactive commands. Uses `testscript` (`github.com/rogpeppe/go-interna
 
 ```
 # Comment describing what this test verifies
-exec dhg <command> [flags]
+exec dh <command> [flags]
 stdout 'expected regex pattern'
 stderr 'expected regex pattern'
 ! stderr .                          # assert no stderr
 
 # For expected failures, prefix with !
-! exec dhg kill 99999
+! exec dh kill 99999
 stderr 'not found'
 
 # Embedded fixture files
@@ -59,7 +59,7 @@ For interactive TUI screens. Spawn the binary in a pseudo-terminal, send keystro
 - `github.com/hinshun/vt10x` — VT100 terminal emulator (parses ANSI escape sequences into a screen buffer)
 
 **How it works:**
-1. Spawn `dhg` in a PTY via go-expect with a vt10x virtual terminal attached
+1. Spawn `dh` in a PTY via go-expect with a vt10x virtual terminal attached
 2. Use `console.ExpectString("text")` to wait for specific text to appear
 3. Use `console.Send("j")` or `console.SendLine("")` to send keystrokes
 4. Read `vt.String()` to get the current rendered screen (ANSI already parsed into plain text)
@@ -93,7 +93,7 @@ func TestTUI_VersionsScreen_EscGoesBack(t *testing.T)
 
 **Golden files** for visual regression: Capture the full vt10x screen buffer as text, store in `testdata/golden/*.golden`. Update with `go test -update`.
 
-**Isolation:** Every TUI test gets its own `DHG_HOME` temp directory so tests don't interfere with each other or the real `~/.dhg/`.
+**Isolation:** Every TUI test gets its own `DH_HOME` temp directory so tests don't interfere with each other or the real `~/.dh/`.
 
 **Timeouts:** Use reasonable expect timeouts (5s default). If a screen doesn't appear within the timeout, the test fails with the last screen content for debugging.
 
@@ -103,9 +103,9 @@ func TestTUI_VersionsScreen_EscGoesBack(t *testing.T)
 
 | Question | Behaviour test | Unit test |
 |----------|---------------|-----------|
-| Does `dhg versions --json` output valid JSON? | Yes | No |
+| Does `dh versions --json` output valid JSON? | Yes | No |
 | Does the config TOML parser handle missing keys? | No | Yes |
-| Does `dhg doctor` report all checks? | Yes | No |
+| Does `dh doctor` report all checks? | Yes | No |
 | Does the `/proc/net/tcp` parser handle IPv6? | No | Yes |
 | Does `--quiet` suppress human text? | Yes | No |
 | Does the main menu show all 5 items? | Yes (TUI test) | No |
@@ -113,7 +113,7 @@ func TestTUI_VersionsScreen_EscGoesBack(t *testing.T)
 | Does the TUI model update cursor on KeyDown? | No | Yes (teatest) |
 | Does the setup wizard complete end-to-end? | Yes (TUI test) | No |
 | Does the Huh form validate Java version input? | No | Yes |
-| Does `dhg install 42.0` create the version dir? | Yes | No |
+| Does `dh install 42.0` create the version dir? | Yes | No |
 | Does version resolution follow the precedence order? | No | Yes |
 | Does pressing esc return to the previous screen? | Yes (TUI test) | No |
 | Does the screen stack pop correctly? | No | Yes (teatest) |

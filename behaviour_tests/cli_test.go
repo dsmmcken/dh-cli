@@ -11,7 +11,7 @@ import (
 )
 
 var (
-	dhgBinary string
+	dhBinary string
 	buildOnce sync.Once
 	buildErr  error
 )
@@ -21,23 +21,23 @@ func TestMain(m *testing.M) {
 	buildOnce.Do(func() {
 		// Build from src
 		goSrcDir := filepath.Join("..", "src")
-		tmpDir, err := os.MkdirTemp("", "dhg-test-*")
+		tmpDir, err := os.MkdirTemp("", "dh-test-*")
 		if err != nil {
 			buildErr = err
 			return
 		}
-		binPath := filepath.Join(tmpDir, "dhg")
-		cmd := exec.Command("go", "build", "-o", binPath, "./cmd/dhg")
+		binPath := filepath.Join(tmpDir, "dh")
+		cmd := exec.Command("go", "build", "-o", binPath, "./cmd/dh")
 		cmd.Dir = goSrcDir
 		if out, err := cmd.CombinedOutput(); err != nil {
 			buildErr = &BuildError{Output: string(out), Err: err}
 			return
 		}
-		dhgBinary = binPath
+		dhBinary = binPath
 	})
 
 	os.Exit(testscript.RunMain(m, map[string]func() int{
-		"dhg": func() int {
+		"dh": func() int {
 			// This won't be used; we use the binary path in Setup instead
 			return 0
 		},
@@ -55,19 +55,19 @@ func (e *BuildError) Error() string {
 
 func TestBehaviour(t *testing.T) {
 	if buildErr != nil {
-		t.Fatalf("failed to build dhg: %v", buildErr)
+		t.Fatalf("failed to build dh: %v", buildErr)
 	}
-	if dhgBinary == "" {
-		t.Fatal("dhg binary not built")
+	if dhBinary == "" {
+		t.Fatal("dh binary not built")
 	}
 
 	testscript.Run(t, testscript.Params{
 		Dir: "testdata/scripts",
 		Setup: func(env *testscript.Env) error {
-			// Make dhg binary available in PATH
-			binDir := filepath.Dir(dhgBinary)
+			// Make dh binary available in PATH
+			binDir := filepath.Dir(dhBinary)
 			env.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
-			env.Setenv("DHG_HOME", filepath.Join(env.WorkDir, ".dhg"))
+			env.Setenv("DH_HOME", filepath.Join(env.WorkDir, ".dh"))
 			return nil
 		},
 	})

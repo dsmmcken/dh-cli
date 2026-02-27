@@ -22,8 +22,8 @@ type JavaInfo struct {
 // Detect locates Java on the system by checking, in order:
 //  1. $JAVA_HOME/bin/java
 //  2. java on $PATH
-//  3. <dhgHome>/java/*/bin/java (managed install)
-func Detect(dhgHome string) (*JavaInfo, error) {
+//  3. <dhHome>/java/*/bin/java (managed install)
+func Detect(dhHome string) (*JavaInfo, error) {
 	// 1. Check JAVA_HOME
 	if javaHome := os.Getenv("JAVA_HOME"); javaHome != "" {
 		javaPath := filepath.Join(javaHome, "bin", "java")
@@ -45,13 +45,13 @@ func Detect(dhgHome string) (*JavaInfo, error) {
 		}
 	}
 
-	// 3. Check managed installs under <dhgHome>/java/*/bin/java
-	if dhgHome != "" {
-		pattern := filepath.Join(dhgHome, "java", "*", "bin", "java")
+	// 3. Check managed installs under <dhHome>/java/*/bin/java
+	if dhHome != "" {
+		pattern := filepath.Join(dhHome, "java", "*", "bin", "java")
 		matches, _ := filepath.Glob(pattern)
 		if len(matches) == 0 {
 			// Also check one level deeper for macOS layout: java/*/Contents/Home/bin/java
-			pattern = filepath.Join(dhgHome, "java", "*", "Contents", "Home", "bin", "java")
+			pattern = filepath.Join(dhHome, "java", "*", "Contents", "Home", "bin", "java")
 			matches, _ = filepath.Glob(pattern)
 		}
 		for _, m := range matches {

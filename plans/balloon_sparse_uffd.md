@@ -2,7 +2,7 @@
 
 ## Context
 
-`dhg exec --vm` restores a Firecracker VM from snapshot. With UFFD eager page
+`dh exec --vm` restores a Firecracker VM from snapshot. With UFFD eager page
 population, the total exec time is ~2.4s (1.5s restore + 0.5s run_script). The
 1.5s is spent UFFDIO_COPY'ing all 2GB of VM memory, even though Deephaven only
 uses ~300MB at snapshot time.
@@ -160,11 +160,11 @@ type SnapshotMetadata struct {
 Changing the JVM args requires rebuilding the rootfs and re-preparing the
 snapshot:
 ```bash
-dhg vm clean --version 41.1
-dhg vm prepare --version 41.1
+dh vm clean --version 41.1
+dh vm prepare --version 41.1
 ```
 
-Users will need to do this after upgrading `dhg` with this change.
+Users will need to do this after upgrading `dh` with this change.
 
 ## Files to modify
 
@@ -184,20 +184,20 @@ cd go_src && go vet ./... && CGO_ENABLED=0 go build -o dhg ./cmd/dhg && cp dhg ~
 
 ### 2. Rebuild rootfs + snapshot
 ```bash
-dhg vm clean --version 41.1
-dhg vm prepare --version 41.1
+dh vm clean --version 41.1
+dh vm prepare --version 41.1
 ```
 
 During prepare, verbose output should show balloon inflation and the snapshot
 should produce a sparse file. Check:
 ```bash
-ls -lh ~/.dhg/vm/snapshots/41.1/snapshot_mem    # logical size (6GB)
-du -h ~/.dhg/vm/snapshots/41.1/snapshot_mem      # physical size (should be ~500MB)
+ls -lh ~/.dh/vm/snapshots/41.1/snapshot_mem    # logical size (6GB)
+du -h ~/.dh/vm/snapshots/41.1/snapshot_mem      # physical size (should be ~500MB)
 ```
 
 ### 3. Test UFFD mode
 ```bash
-dhg exec --vm --verbose -c "print('Hello from sparse UFFD!')"
+dh exec --vm --verbose -c "print('Hello from sparse UFFD!')"
 ```
 
 Expected verbose output should show populated MiB much less than 6144
@@ -205,15 +205,15 @@ Expected verbose output should show populated MiB much less than 6144
 
 ### 4. Performance comparison
 ```bash
-time dhg exec --vm --verbose -c "print('hello')"
-time DHG_VM_NO_UFFD=1 dhg exec --vm --verbose -c "print('hello')"
+time dh exec --vm --verbose -c "print('hello')"
+time DH_VM_NO_UFFD=1 dh exec --vm --verbose -c "print('hello')"
 ```
 
 Target: UFFD mode under 1.5s total (down from 2.4s).
 
 ### 5. Memory-intensive workload (verify 4GB heap works)
 ```bash
-dhg exec --vm -c "
+dh exec --vm -c "
 from deephaven import empty_table
 t = empty_table(10_000_000).update(['x = i', 'y = x * x', 'z = (double)x / 3.14'])
 print(t.to_string(num_rows=5))

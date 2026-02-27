@@ -51,7 +51,7 @@ func CheckPrerequisites(paths *VMPaths) []*PrereqError {
 		errs = append(errs, &PrereqError{
 			Check:   "/dev/kvm",
 			Message: "permission denied",
-			Hint:    "Will be fixed automatically by 'dhg vm prepare', or run: sudo setfacl -m u:${USER}:rw /dev/kvm",
+			Hint:    "Will be fixed automatically by 'dh vm prepare', or run: sudo setfacl -m u:${USER}:rw /dev/kvm",
 			AutoFix: true,
 		})
 	}
@@ -61,7 +61,7 @@ func CheckPrerequisites(paths *VMPaths) []*PrereqError {
 		errs = append(errs, &PrereqError{
 			Check:   "firecracker",
 			Message: "firecracker binary not found",
-			Hint:    fmt.Sprintf("Run 'dhg vm prepare' to auto-download, or place binary at %s", paths.Firecracker),
+			Hint:    fmt.Sprintf("Run 'dh vm prepare' to auto-download, or place binary at %s", paths.Firecracker),
 			AutoFix: true,
 		})
 	}
@@ -71,7 +71,7 @@ func CheckPrerequisites(paths *VMPaths) []*PrereqError {
 		errs = append(errs, &PrereqError{
 			Check:   "kernel",
 			Message: "vmlinux kernel not found",
-			Hint:    fmt.Sprintf("Run 'dhg vm prepare' to auto-download, or place vmlinux at %s", paths.Kernel),
+			Hint:    fmt.Sprintf("Run 'dh vm prepare' to auto-download, or place vmlinux at %s", paths.Kernel),
 			AutoFix: true,
 		})
 	}
@@ -156,7 +156,7 @@ func CheckSnapshot(paths *VMPaths, version string) error {
 	for _, name := range []string{"metadata.json", "snapshot_mem", "snapshot_vmstate", "disk.ext4"} {
 		path := fmt.Sprintf("%s/%s", snapDir, name)
 		if _, err := os.Stat(path); err != nil {
-			return fmt.Errorf("no valid snapshot for version %s (missing %s). Run: dhg vm prepare --version %s", version, name, version)
+			return fmt.Errorf("no valid snapshot for version %s (missing %s). Run: dh vm prepare --version %s", version, name, version)
 		}
 	}
 	return nil

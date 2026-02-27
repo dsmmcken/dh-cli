@@ -28,11 +28,11 @@ const (
 
 // copyChunkSize is the size of each UFFDIO_COPY request. 128MB chunks balance
 // ioctl count vs memory bandwidth utilization for parallel copy goroutines.
-// Used only in eager mode (DHG_VM_EAGER_UFFD=1).
+// Used only in eager mode (DH_VM_EAGER_UFFD=1).
 const copyChunkSize = 128 * 1024 * 1024
 
 // copyWorkers is the number of parallel goroutines for eager UFFDIO_COPY.
-// Used only in eager mode (DHG_VM_EAGER_UFFD=1).
+// Used only in eager mode (DH_VM_EAGER_UFFD=1).
 const copyWorkers = 4
 
 // lazyChunkSize is the alignment/size for lazy UFFDIO_COPY responses.
@@ -116,7 +116,7 @@ func ProbeUffd() bool {
 
 // uffdHandler manages the UFFD lifecycle. In lazy mode (default), all page
 // faults are served on demand with 2MB-aligned UFFDIO_COPY from a pre-cached
-// mmap. In eager mode (DHG_VM_EAGER_UFFD=1), data pages are bulk-copied
+// mmap. In eager mode (DH_VM_EAGER_UFFD=1), data pages are bulk-copied
 // before VM resume. The snapshot file is pre-loaded into the page cache to
 // minimize I/O latency in both modes.
 type uffdHandler struct {
@@ -326,7 +326,7 @@ func (h *uffdHandler) doPopulate(ctx context.Context, stderr io.Writer) error {
 	}
 
 	// Eager mode: pre-copy all data pages before VM resume (old behavior).
-	if os.Getenv("DHG_VM_EAGER_UFFD") == "1" {
+	if os.Getenv("DH_VM_EAGER_UFFD") == "1" {
 		<-h.preWarm
 
 		var jobs []copyJob
@@ -367,7 +367,7 @@ func (h *uffdHandler) doPopulate(ctx context.Context, stderr io.Writer) error {
 	// cold-start page faults on the critical path (Python interpreter, JVM code
 	// cache, kernel), then serve remaining faults lazily with 2MB chunks.
 	eagerPreloadBytes := uint64(256 * 1024 * 1024) // default 256MB
-	if v := os.Getenv("DHG_VM_EAGER_MB"); v != "" {
+	if v := os.Getenv("DH_VM_EAGER_MB"); v != "" {
 		if mb, err := strconv.ParseUint(v, 10, 64); err == nil {
 			eagerPreloadBytes = mb * 1024 * 1024
 		}

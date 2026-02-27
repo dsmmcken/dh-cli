@@ -1,4 +1,4 @@
 # --help shows usage
-exec dhg --help
+exec dh --help
 stdout 'Usage:'
-stdout 'dhg \[flags\]'
+stdout 'dh \[flags\]'

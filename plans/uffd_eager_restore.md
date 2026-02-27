@@ -20,7 +20,7 @@ to the latest `main` which supports `WithMemoryBackend("Uffd", socketPath)`.
   - UFFD path: start handler → `WithSnapshot("", statePath, WithMemoryBackend("Uffd", ...))` with `ResumeVM=false` → `machine.Start()` → `uffd.Wait()` → `machine.ResumeVM()`
   - File path: unchanged (`WithSnapshot(memPath, statePath)` with `ResumeVM=true`)
 - **`internal/vm/machine_other.go`** — Updated stub signature to 4 return values
-- **`internal/exec/exec_vm_linux.go`** — Updated caller, `DHG_VM_NO_UFFD=1` env var for fallback, cleanup in defer and signal handler
+- **`internal/exec/exec_vm_linux.go`** — Updated caller, `DH_VM_NO_UFFD=1` env var for fallback, cleanup in defer and signal handler
 
 ### Cleanup done (same session)
 - Deleted `network_linux.go`, `network_other.go` (dead TAP networking code)
@@ -56,7 +56,7 @@ cd go_src && make install-local
 
 ### 2. Test UFFD mode
 ```bash
-dhg exec --vm --version 41.1 --verbose -c "print('Hello from UFFD!')"
+dh exec --vm --version 41.1 --verbose -c "print('Hello from UFFD!')"
 ```
 
 Expected: Should show "UFFD: populated N regions, 2048 MiB" in verbose output, then execute.
@@ -88,7 +88,7 @@ the VM gets SIGBUS. Verify ordering in the defer.
 
 ### 4. Test File fallback
 ```bash
-DHG_VM_NO_UFFD=1 dhg exec --vm --version 41.1 --verbose -c "print('hello')"
+DH_VM_NO_UFFD=1 dh exec --vm --version 41.1 --verbose -c "print('hello')"
 ```
 
 Should behave identically to before (same ~5-6s timing).
@@ -96,24 +96,24 @@ Should behave identically to before (same ~5-6s timing).
 ### 5. Performance comparison
 ```bash
 # UFFD (should be significantly faster — target: ~1-2s vs ~5-6s)
-time dhg exec --vm --version 41.1 --verbose -c "print('hello')"
+time dh exec --vm --version 41.1 --verbose -c "print('hello')"
 
 # File baseline
-time DHG_VM_NO_UFFD=1 dhg exec --vm --version 41.1 --verbose -c "print('hello')"
+time DH_VM_NO_UFFD=1 dh exec --vm --version 41.1 --verbose -c "print('hello')"
 ```
 
 ### 6. Correctness tests
 ```bash
-dhg exec --vm --version 41.1 -c "from deephaven import empty_table; t = empty_table(5).update(['x = i']); print(t.to_string())"
-dhg exec --vm --version 41.1 --json -c "1+1"
+dh exec --vm --version 41.1 -c "from deephaven import empty_table; t = empty_table(5).update(['x = i']); print(t.to_string())"
+dh exec --vm --version 41.1 --json -c "1+1"
 ```
 
 ### 7. If snapshot needs re-preparing
 The existing snapshot (File backend) should work with UFFD — the `snapshot_mem` file
 format is the same. But if issues arise:
 ```bash
-dhg vm clean --version 41.1
-dhg vm prepare --version 41.1
+dh vm clean --version 41.1
+dh vm prepare --version 41.1
 ```
 
 ## Architecture Summary

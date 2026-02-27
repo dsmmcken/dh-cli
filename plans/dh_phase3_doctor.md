@@ -5,19 +5,19 @@
 
 ## Goal
 
-Implement `dhg doctor` which runs diagnostic checks across all subsystems and reports environment health.
+Implement `dh doctor` which runs diagnostic checks across all subsystems and reports environment health.
 
 ## Files to create/modify
 
 ```
 go_src/
   cmd/dhg/
-    doctor.go              # dhg doctor command
+    doctor.go              # dh doctor command
 ```
 
 No new internal package — doctor calls into existing packages: `config`, `java`, `versions`, `discovery`.
 
-## Command: `dhg doctor`
+## Command: `dh doctor`
 
 Runs checks in order and reports results. Flags: `--fix` (attempt auto-fix), `--json`.
 
@@ -27,7 +27,7 @@ Runs checks in order and reports results. Flags: `--fix` (attempt auto-fix), `--
 2. **Java** — `java.Detect()` finds compatible Java (>= 17)
 3. **Versions** — `versions.ListInstalled()` returns count
 4. **Default version** — `config.Load()` has a default set, and it exists on disk
-5. **Disk space** — check free space in `~/.dhg/`, warn if < 5 GB
+5. **Disk space** — check free space in `~/.dh/`, warn if < 5 GB
 
 ### Human output
 ```
@@ -37,7 +37,7 @@ Deephaven CLI Doctor
   ✓ Java       21.0.5 (JAVA_HOME)
   ✓ Versions   2 installed
   ✓ Default    42.0
-  ⚠ Disk       2.1 GB free in ~/.dhg
+  ⚠ Disk       2.1 GB free in ~/.dh
 
 Everything looks good (1 warning).
 ```
@@ -70,15 +70,15 @@ Everything looks good (1 warning).
 - `healthy` is false when any check is `error` status, true when all `ok` or `warning`
 
 ### Behaviour tests (`go_behaviour_tests/testdata/scripts/doctor.txtar`)
-- `dhg doctor` → stdout contains `uv` and `Java`
-- `dhg doctor --json` → valid JSON, has `"healthy"`, `"checks"` array
+- `dh doctor` → stdout contains `uv` and `Java`
+- `dh doctor --json` → valid JSON, has `"healthy"`, `"checks"` array
 - Each check has `"name"`, `"status"`, `"detail"`
-- `dhg doctor --no-color` → no ANSI escapes
+- `dh doctor --no-color` → no ANSI escapes
 
 ## Verification
 
 ```bash
-./dhg doctor
-./dhg doctor --json
-./dhg doctor --json | jq '.checks | length'  # → 5
+./dh doctor
+./dh doctor --json
+./dh doctor --json | jq '.checks | length'  # → 5
 ```

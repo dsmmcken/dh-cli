@@ -24,14 +24,14 @@ func execRoot(t *testing.T, args ...string) (stdout string, err error) {
 func TestVersion(t *testing.T) {
 	out, err := execRoot(t, "--version")
 	require.NoError(t, err)
-	assert.Contains(t, out, "dhg v")
+	assert.Contains(t, out, "dh v")
 }
 
 func TestHelp(t *testing.T) {
 	out, err := execRoot(t, "--help")
 	require.NoError(t, err)
 	assert.Contains(t, out, "Usage:")
-	assert.Contains(t, out, "dhg [")
+	assert.Contains(t, out, "dh [")
 }
 
 func TestVerboseQuietMutualExclusion(t *testing.T) {

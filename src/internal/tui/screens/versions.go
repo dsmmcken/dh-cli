@@ -59,12 +59,12 @@ type VersionsScreen struct {
 	cursor  int
 	loading bool
 	err     error
-	dhgHome string
+	dhHome string
 	width   int
 	height  int
 }
 
-func NewVersionsScreen(dhgHome string) VersionsScreen {
+func NewVersionsScreen(dhHome string) VersionsScreen {
 	return VersionsScreen{
 		keys: versionsKeyMap{
 			Up:        key.NewBinding(key.WithKeys("up", "k"), key.WithHelp("↑/k", "up")),
@@ -78,7 +78,7 @@ func NewVersionsScreen(dhgHome string) VersionsScreen {
 		},
 		help:    help.New(),
 		loading: true,
-		dhgHome: dhgHome,
+		dhHome: dhHome,
 	}
 }
 
@@ -97,7 +97,7 @@ func (m VersionsScreen) Cursor() int {
 }
 
 func (m VersionsScreen) loadVersions() tea.Cmd {
-	dhgHome := m.dhgHome
+	dhHome := m.dhHome
 	return func() tea.Msg {
 		cfg, _ := config.Load()
 		dflt := ""
@@ -105,7 +105,7 @@ func (m VersionsScreen) loadVersions() tea.Cmd {
 			dflt = cfg.DefaultVersion
 		}
 
-		installed, err := versions.ListInstalled(dhgHome)
+		installed, err := versions.ListInstalled(dhHome)
 		if err != nil {
 			return VersionsListLoadedMsg{Err: err}
 		}
@@ -202,17 +202,17 @@ func (m VersionsScreen) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					}
 				} else {
 					// Not installed: install then set as default
-					return m, pushScreen(NewInstallProgressScreen(m.dhgHome, e.Version))
+					return m, pushScreen(NewInstallProgressScreen(m.dhHome, e.Version))
 				}
 			}
 		case key.Matches(msg, m.keys.Install):
 			if len(m.entries) > 0 && !m.entries[m.cursor].Installed {
-				return m, pushScreen(NewInstallProgressScreen(m.dhgHome, m.entries[m.cursor].Version))
+				return m, pushScreen(NewInstallProgressScreen(m.dhHome, m.entries[m.cursor].Version))
 			}
 		case key.Matches(msg, m.keys.Uninstall):
 			if len(m.entries) > 0 && m.entries[m.cursor].Installed {
 				v := m.entries[m.cursor].Version
-				_ = versions.Uninstall(m.dhgHome, v)
+				_ = versions.Uninstall(m.dhHome, v)
 				m.entries[m.cursor].Installed = false
 				m.entries[m.cursor].DateStr = ""
 				if m.entries[m.cursor].IsDefault {

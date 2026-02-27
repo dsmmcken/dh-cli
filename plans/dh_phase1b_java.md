@@ -5,7 +5,7 @@
 
 ## Goal
 
-Implement Java detection, Java installation (Eclipse Temurin JDK 21), and the `dhg java` / `dhg java install` commands.
+Implement Java detection, Java installation (Eclipse Temurin JDK 21), and the `dh java` / `dh java install` commands.
 
 ## Files to create/modify
 
@@ -17,8 +17,8 @@ go_src/
       install.go           # Download and extract Temurin JDK
       version.go           # Parse java -version output
   cmd/dhg/
-    java.go                # dhg java (show status)
-    java_install.go        # dhg java install
+    java.go                # dh java (show status)
+    java_install.go        # dh java install
 ```
 
 ## Internal package: `internal/java`
@@ -46,10 +46,10 @@ go_src/
 
 ## Commands
 
-### `dhg java`
+### `dh java`
 Show Java status. Human-readable or JSON.
 
 JSON: `{"found": true, "version": "21.0.5", "path": "...", "home": "...", "source": "JAVA_HOME"}`
 
-### `dhg java install`
+### `dh java install`
 Download Temurin JDK. Flags: `--jdk-version` (default 21), `--force`.

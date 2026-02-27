@@ -2,7 +2,7 @@
 
 ## Context
 
-`dhg exec --vm` currently takes ~1 second. The two dominant costs are:
+`dh exec --vm` currently takes ~1 second. The two dominant costs are:
 1. **UFFD eager page copy**: ~600ms — copies ALL ~900MB of data pages before resuming VM
 2. **Read result via Arrow/gRPC**: ~50-100ms — 2 gRPC round-trips + Arrow serialization + pickle/base64
 
@@ -21,7 +21,7 @@ Remove the "wait for preWarm, build copy jobs, parallelCopy" block. After receiv
 2. Start `lazyFaultHandlerV2` goroutine for ALL faults
 3. Return nil immediately (signals `done` to `Wait()` in machine_linux.go)
 
-Gate with `DHG_VM_EAGER_UFFD=1` env var for fallback to old eager behavior.
+Gate with `DH_VM_EAGER_UFFD=1` env var for fallback to old eager behavior.
 
 ### New `lazyFaultHandlerV2` + `handleLazyFault` methods
 
@@ -46,7 +46,7 @@ populatedChunks map[uint64]struct{}
 
 ### Keep old code
 
-Keep `parallelCopy` and old `lazyFaultHandler` — gated behind `DHG_VM_EAGER_UFFD=1`.
+Keep `parallelCopy` and old `lazyFaultHandler` — gated behind `DH_VM_EAGER_UFFD=1`.
 
 ## Change 2: File-Based Result Channel (~50-100ms saving)
 
@@ -105,15 +105,15 @@ Call `read_result_file()` instead of `read_result_table(session)`.
 cd go_src && go vet ./... && CGO_ENABLED=0 go build -ldflags="-X github.com/dsmmcken/dh-cli/go_src/internal/cmd.Version=0.1.0" -o dhg ./cmd/dhg && cp dhg ~/.local/bin/dhg
 
 # Rebuild snapshot (required — vm_runner.py changed)
-dhg vm clean --version <ver>
-dhg vm prepare --version <ver>
+dh vm clean --version <ver>
+dh vm prepare --version <ver>
 
 # Test
-time dhg exec --vm --verbose -c "print('hello')"
+time dh exec --vm --verbose -c "print('hello')"
 
 # Fallback to eager (for comparison)
-time DHG_VM_EAGER_UFFD=1 dhg exec --vm --verbose -c "print('hello')"
+time DH_VM_EAGER_UFFD=1 dh exec --vm --verbose -c "print('hello')"
 
 # Test complex workload
-dhg exec --vm -c "from deephaven import empty_table; t = empty_table(1000000).update(['x = i'])"
+dh exec --vm -c "from deephaven import empty_table; t = empty_table(1000000).update(['x = i'])"
 ```

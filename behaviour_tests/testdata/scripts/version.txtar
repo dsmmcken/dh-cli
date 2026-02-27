@@ -1,4 +1,4 @@
 # --version prints version string and exits 0
-exec dhg --version
-stdout '^dhg v'
+exec dh --version
+stdout '^dh v'
 ! stderr .

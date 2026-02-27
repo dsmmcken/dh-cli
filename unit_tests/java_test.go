@@ -89,8 +89,8 @@ func TestDetect_NoJava(t *testing.T) {
 
 func TestDetect_ManagedInstall(t *testing.T) {
 	// Create a fake managed Java installation
-	dhgHome := t.TempDir()
-	jdkDir := filepath.Join(dhgHome, "java", "jdk-21.0.5+11")
+	dhHome := t.TempDir()
+	jdkDir := filepath.Join(dhHome, "java", "jdk-21.0.5+11")
 	binDir := filepath.Join(jdkDir, "bin")
 	require.NoError(t, os.MkdirAll(binDir, 0o755))
 
@@ -106,7 +106,7 @@ echo 'OpenJDK Runtime Environment Temurin-21.0.5+11 (build 21.0.5+11)' >&2
 	t.Setenv("JAVA_HOME", "")
 	t.Setenv("PATH", t.TempDir())
 
-	info, err := java.Detect(dhgHome)
+	info, err := java.Detect(dhHome)
 	require.NoError(t, err)
 	assert.True(t, info.Found)
 	assert.Equal(t, "21.0.5", info.Version)

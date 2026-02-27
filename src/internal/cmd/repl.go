@@ -36,9 +36,9 @@ Provides a multi-line input area with a scrollable log view showing
 stdout, stderr, errors, and result values.
 
 Examples:
-  dhg repl                                    # Embedded mode
-  dhg repl --host localhost:10000             # Remote mode
-  dhg repl --port 8080                        # Custom port`,
+  dh repl                                    # Embedded mode
+  dh repl --host localhost:10000             # Remote mode
+  dh repl --port 8080                        # Custom port`,
 		Args: cobra.NoArgs,
 		RunE: runRepl,
 	}
@@ -61,8 +61,8 @@ Examples:
 func runRepl(cmd *cobra.Command, args []string) error {
 	// Resolve version
 	config.SetConfigDir(ConfigDir)
-	dhgHome := config.DHGHome()
-	envVersion := os.Getenv("DHG_VERSION")
+	dhHome := config.DHHome()
+	envVersion := os.Getenv("DH_VERSION")
 
 	version, err := config.ResolveVersion(replVersionFlag, envVersion)
 	if err != nil {
@@ -70,7 +70,7 @@ func runRepl(cmd *cobra.Command, args []string) error {
 	}
 
 	// Find venv python
-	pythonBin, err := dhexec.FindVenvPython(dhgHome, version)
+	pythonBin, err := dhexec.FindVenvPython(dhHome, version)
 	if err != nil {
 		return fmt.Errorf("finding venv python: %w", err)
 	}
@@ -84,7 +84,7 @@ func runRepl(cmd *cobra.Command, args []string) error {
 	var javaHome string
 	isRemote := replHostFlag != ""
 	if !isRemote {
-		javaInfo, err := java.Detect(dhgHome)
+		javaInfo, err := java.Detect(dhHome)
 		if err != nil {
 			return fmt.Errorf("detecting Java: %w", err)
 		}
@@ -108,7 +108,7 @@ func runRepl(cmd *cobra.Command, args []string) error {
 		TLSClientKey:  replTLSClientKeyFlag,
 		PythonBin:     pythonBin,
 		JavaHome:      javaHome,
-		DHGHome:       dhgHome,
+		DHHome:       dhHome,
 	}
 
 	// Create and run the TUI

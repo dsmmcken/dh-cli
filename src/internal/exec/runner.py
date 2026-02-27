@@ -1,4 +1,4 @@
-"""Embedded runner for dhg exec/serve. Executed via python -c, reads user code from stdin."""
+"""Embedded runner for dh exec/serve. Executed via python -c, reads user code from stdin."""
 from __future__ import annotations
 
 import argparse
@@ -425,7 +425,7 @@ def run_serve(args, code: str):
         url = f"{url}/iframe/widget/?name={args.iframe}"
 
     # Signal to Go that we're ready (consumed by Go, not shown to user)
-    print(f"__DHG_READY__:{url}", flush=True)
+    print(f"__DH_READY__:{url}", flush=True)
 
     # User-visible output
     print(f"Server running at {url}", flush=True)
@@ -457,7 +457,7 @@ def _suggest_backtick_hint(script_content: str, error: str) -> str | None:
         return (
             "\nHint: If your script contains backticks (`) for Deephaven strings,\n"
             "they may have been interpreted by the shell. Use a script file\n"
-            "or $'...' quoting. See 'dhg exec --help' for details."
+            "or $'...' quoting. See 'dh exec --help' for details."
         )
     return None
 
@@ -481,7 +481,7 @@ def _emit_error(args, message: str, exit_code: int):
 # --- Main ---
 
 def main():
-    parser = argparse.ArgumentParser(description="dhg exec/serve runner")
+    parser = argparse.ArgumentParser(description="dh exec/serve runner")
     parser.add_argument("--mode", choices=["embedded", "remote", "serve"], required=True)
     parser.add_argument("--port", type=int, default=10000)
     parser.add_argument("--host", default="localhost")

@@ -5,7 +5,7 @@
 
 ## Goal
 
-Implement server discovery (find running Deephaven servers), server kill, and the `dhg list` / `dhg kill` commands.
+Implement server discovery (find running Deephaven servers), server kill, and the `dh list` / `dh kill` commands.
 
 ## Files to create/modify
 
@@ -19,8 +19,8 @@ go_src/
       docker.go            # docker ps parsing
       kill.go              # Stop server by port
   cmd/dhg/
-    list.go                # dhg list
-    kill.go                # dhg kill <PORT>
+    list.go                # dh list
+    kill.go                # dh kill <PORT>
 ```
 
 ## Internal package: `internal/discovery`
@@ -54,10 +54,10 @@ go_src/
 
 ## Commands
 
-### `dhg list`
+### `dh list`
 List running servers. Human-readable table or JSON array.
 
-### `dhg kill <PORT>`
+### `dh kill <PORT>`
 Stop server on port. Exit 4 if no server found on that port.
 
 ## Tests
@@ -70,13 +70,13 @@ Stop server on port. Exit 4 if no server found on that port.
 - Port deduplication
 
 ### Behaviour tests (`go_behaviour_tests/testdata/scripts/`)
-- `list.txtar`: `dhg list --json` → valid JSON with `"servers"` key
-- `kill.txtar`: `dhg kill 99999` → exit 4, error about server not found
+- `list.txtar`: `dh list --json` → valid JSON with `"servers"` key
+- `kill.txtar`: `dh kill 99999` → exit 4, error about server not found
 
 ## Verification
 
 ```bash
-./dhg list
-./dhg list --json
-./dhg kill 99999   # expected: error, exit 4
+./dh list
+./dh list --json
+./dh kill 99999   # expected: error, exit 4
 ```

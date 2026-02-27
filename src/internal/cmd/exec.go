@@ -36,11 +36,11 @@ func addExecCommand(parent *cobra.Command) {
 Code can be provided via -c flag, a script file, or stdin (use - for stdin).
 
 Examples:
-  dhg exec -c "print('hello')"
-  dhg exec script.py
-  echo "print('hi')" | dhg exec -
-  dhg exec -c "from deephaven import empty_table; t = empty_table(5)"
-  dhg exec -c "print('remote')" --host remote.example.com`,
+  dh exec -c "print('hello')"
+  dh exec script.py
+  echo "print('hi')" | dh exec -
+  dh exec -c "from deephaven import empty_table; t = empty_table(5)"
+  dh exec -c "print('remote')" --host remote.example.com`,
 		Args:              cobra.MaximumNArgs(1),
 		DisableFlagParsing: false,
 		RunE:              runExec,

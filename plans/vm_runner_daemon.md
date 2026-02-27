@@ -2,11 +2,11 @@
 
 ## Context
 
-`dhg exec --vm` restores a Firecracker VM in ~73ms but then spends ~12s on the host side: spawning Python, importing pydeephaven (336ms), establishing a gRPC session (2.6s), and executing code with JVM warmup (7.5s). All of this can be done once during `dhg vm prepare` and frozen into the snapshot.
+`dh exec --vm` restores a Firecracker VM in ~73ms but then spends ~12s on the host side: spawning Python, importing pydeephaven (336ms), establishing a gRPC session (2.6s), and executing code with JVM warmup (7.5s). All of this can be done once during `dh vm prepare` and frozen into the snapshot.
 
 ## Approach
 
-Replace the host-side Python pipeline with an **in-VM runner daemon** that pre-connects a pydeephaven Session to Deephaven. This daemon + warm session are captured in the snapshot. On `dhg exec --vm`, the Go code sends user code as JSON over vsock and reads back JSON results. No Python on the host at all.
+Replace the host-side Python pipeline with an **in-VM runner daemon** that pre-connects a pydeephaven Session to Deephaven. This daemon + warm session are captured in the snapshot. On `dh exec --vm`, the Go code sends user code as JSON over vsock and reads back JSON results. No Python on the host at all.
 
 **Before:** Host Go → TCP proxy → vsock → VM bridge → DH gRPC (12s)
 **After:** Host Go → vsock → VM runner daemon (already connected) → DH (est. <200ms)
@@ -48,8 +48,8 @@ Handle probe connections (empty data from `waitForVsock`) gracefully — just cl
 
 ```bash
 make install-local
-dhg vm clean --version 41.1
-dhg vm prepare --version 41.1
+dh vm clean --version 41.1
+dh vm prepare --version 41.1
 ```
 
 ### Step 4: Update `internal/vm/vm.go`
@@ -79,11 +79,11 @@ Also remove the temporary timing instrumentation added during debugging.
 
 ```bash
 make install-local
-dhg exec --vm --version 41.1 -c "print('Hello from Firecracker VM')"
-dhg exec --vm --version 41.1 -c "1 + 1"
-dhg exec --vm --version 41.1 --json -c "print('hello')"
-dhg exec --vm --version 41.1 -c "raise ValueError('test')"
-time dhg exec --vm --version 41.1 -c "print('hello')"  # should be <1s
+dh exec --vm --version 41.1 -c "print('Hello from Firecracker VM')"
+dh exec --vm --version 41.1 -c "1 + 1"
+dh exec --vm --version 41.1 --json -c "print('hello')"
+dh exec --vm --version 41.1 -c "raise ValueError('test')"
+time dh exec --vm --version 41.1 -c "print('hello')"  # should be <1s
 ```
 
 ## Files Changed

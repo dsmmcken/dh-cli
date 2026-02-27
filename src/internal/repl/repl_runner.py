@@ -1,4 +1,4 @@
-"""Long-running REPL runner for dhg repl. Executed via python -c, communicates via JSON on stdin/stdout."""
+"""Long-running REPL runner for dh repl. Executed via python -c, communicates via JSON on stdin/stdout."""
 from __future__ import annotations
 
 import argparse
@@ -493,7 +493,7 @@ def run_loop(session, args):
 # --- Entry point ---
 
 def main():
-    parser = argparse.ArgumentParser(description="dhg repl runner")
+    parser = argparse.ArgumentParser(description="dh repl runner")
     parser.add_argument("--mode", choices=["embedded", "remote"], required=True)
     parser.add_argument("--port", type=int, default=10000)
     parser.add_argument("--host", default="localhost")

@@ -31,7 +31,7 @@ const (
 )
 
 // BootAndSnapshot boots a fresh VM, waits for Deephaven readiness,
-// then pauses and creates a snapshot. Used by `dhg vm prepare`.
+// then pauses and creates a snapshot. Used by `dh vm prepare`.
 func BootAndSnapshot(ctx context.Context, cfg *VMConfig, paths *VMPaths, stderr io.Writer) error {
 	version := cfg.Version
 	rootfsPath := paths.RootfsForVersion(version)

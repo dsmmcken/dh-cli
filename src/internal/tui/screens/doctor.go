@@ -45,12 +45,12 @@ type DoctorScreen struct {
 	spinner spinner.Model
 	loading bool
 	checks  []checkResult
-	dhgHome string
+	dhHome string
 	width   int
 	height  int
 }
 
-func NewDoctorScreen(dhgHome string) DoctorScreen {
+func NewDoctorScreen(dhHome string) DoctorScreen {
 	s := spinner.New()
 	s.Spinner = spinner.Dot
 	return DoctorScreen{
@@ -61,7 +61,7 @@ func NewDoctorScreen(dhgHome string) DoctorScreen {
 		},
 		spinner: s,
 		loading: true,
-		dhgHome: dhgHome,
+		dhHome: dhHome,
 	}
 }
 
@@ -70,12 +70,12 @@ func (m DoctorScreen) Init() tea.Cmd {
 }
 
 func (m DoctorScreen) runChecks() tea.Cmd {
-	dhgHome := m.dhgHome
+	dhHome := m.dhHome
 	return func() tea.Msg {
 		var checks []checkResult
 
 		// Java check
-		info, err := java.Detect(dhgHome)
+		info, err := java.Detect(dhHome)
 		if err != nil || !info.Found {
 			checks = append(checks, checkResult{name: "Java", status: "error", detail: "not found"})
 		} else {
@@ -83,7 +83,7 @@ func (m DoctorScreen) runChecks() tea.Cmd {
 		}
 
 		// Versions check
-		installed, err := versions.ListInstalled(dhgHome)
+		installed, err := versions.ListInstalled(dhHome)
 		if err != nil {
 			checks = append(checks, checkResult{name: "Versions", status: "warning", detail: fmt.Sprintf("could not list: %s", err)})
 		} else if len(installed) == 0 {
@@ -103,15 +103,15 @@ func (m DoctorScreen) runChecks() tea.Cmd {
 		}
 
 		// Disk space
-		checks = append(checks, checkDiskSpaceTUI(dhgHome))
+		checks = append(checks, checkDiskSpaceTUI(dhHome))
 
 		return doctorResultMsg{checks: checks}
 	}
 }
 
-func checkDiskSpaceTUI(dhgHome string) checkResult {
+func checkDiskSpaceTUI(dhHome string) checkResult {
 	var stat unix.Statfs_t
-	target := dhgHome
+	target := dhHome
 	if _, err := os.Stat(target); err != nil {
 		target = filepath.Dir(target)
 	}

@@ -51,7 +51,7 @@ type REPLModel struct {
 
 // NewREPLModel creates a new REPL model with the given session config.
 func NewREPLModel(cfg SessionConfig) REPLModel {
-	history := NewHistory(cfg.DHGHome)
+	history := NewHistory(cfg.DHHome)
 	return REPLModel{
 		input:      NewInput(history),
 		tabbar:     NewTabBar(),

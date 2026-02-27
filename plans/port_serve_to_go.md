@@ -1,22 +1,22 @@
-# Port `dh serve` to Go `dhg serve`
+# Port `dh serve` to Go `dh serve`
 
 ## Context
 
-The Python CLI's `dh serve` command starts an embedded Deephaven server, runs a user script (e.g. a dashboard), opens the browser, and keeps the server alive until Ctrl+C. This needs to be ported to the Go `dhg` CLI following the same architecture as `dhg exec`: Go handles CLI/lifecycle, the embedded Python runner handles Deephaven interaction.
+The Python CLI's `dh serve` command starts an embedded Deephaven server, runs a user script (e.g. a dashboard), opens the browser, and keeps the server alive until Ctrl+C. This needs to be ported to the Go `dh` CLI following the same architecture as `dh exec`: Go handles CLI/lifecycle, the embedded Python runner handles Deephaven interaction.
 
 ## Architecture
 
 Same pattern as exec: Go orchestrates, `runner.py` does the Deephaven work.
 
 ```
-dhg serve dashboard.py --port 8080
+dh serve dashboard.py --port 8080
   │
   ├─ Go: resolve version, find python, detect java
   ├─ Go: start python -c <runner.py> --mode serve --port 8080
   │       (pipe script content via stdin)
   │
   ├─ Runner: start embedded server, run script, print sentinel
-  │   stdout → "__DHG_READY__:http://localhost:8080"
+  │   stdout → "__DH_READY__:http://localhost:8080"
   │   stdout → "Server running at http://localhost:8080"
   │   stdout → "Press Ctrl+C to stop."
   │   (blocks in keep-alive loop)
@@ -52,7 +52,7 @@ Flags:
 7. Build runner args: `--mode serve --port N [--jvm-args=X] [--iframe W] --script-path P --cwd D`
 8. Start subprocess: `python -c <runner.py> <args>` with script on stdin
 9. Pipe stdout through a `bufio.Scanner`:
-   - On `__DHG_READY__:<url>`: open browser (if `!--no-browser`), don't forward this line
+   - On `__DH_READY__:<url>`: open browser (if `!--no-browser`), don't forward this line
    - All other lines: forward to user's stdout
 10. Handle signals: first SIGINT → forward `SIGINT` to child; second → `SIGKILL`
 11. `process.Wait()` → exit with child's exit code
@@ -80,7 +80,7 @@ New `run_serve(args, code)` function:
 5. Connect via `Session(host="localhost", port=actual_port)`
 6. `session.run_script(code)` — direct execution, no wrapper
 7. Build URL (with `--iframe` support)
-8. Print `__DHG_READY__:<url>` sentinel (consumed by Go)
+8. Print `__DH_READY__:<url>` sentinel (consumed by Go)
 9. Print `Server running at <url>` and `Press Ctrl+C to stop.`
 10. Keep-alive loop (`while True: time.sleep(1)`)
 11. On `KeyboardInterrupt`: print "Shutting down...", close session, exit 0
@@ -111,7 +111,7 @@ User presses Ctrl+C (2nd time):
 
 ## Verification
 
-1. `go build ./cmd/dhg` — compiles
+1. `go build ./cmd/dh` — compiles
 2. `cd go_unit_tests && go test ./...` — unit tests pass
 3. `cd go_behaviour_tests && go test -v -run TestBehaviour/serve` — behaviour tests pass
-4. Manual smoke test: `dhg serve dashboard.py` with a real installed version
+4. Manual smoke test: `dh serve dashboard.py` with a real installed version

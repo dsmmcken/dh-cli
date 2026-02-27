@@ -19,9 +19,9 @@ import (
 
 // runVM executes code via a Firecracker VM snapshot restore.
 // The VM contains a pre-connected runner daemon, so no host-side Python is needed.
-func runVM(cfg *ExecConfig, userCode, version, dhgHome string) (int, map[string]any, error) {
+func runVM(cfg *ExecConfig, userCode, version, dhHome string) (int, map[string]any, error) {
 	entryTime := time.Now()
-	vmPaths := vm.NewVMPaths(dhgHome)
+	vmPaths := vm.NewVMPaths(dhHome)
 
 	// Start page cache warming ASAP — overlaps with prereq checks,
 	// Firecracker startup, and the beginning of VM execution.
@@ -60,9 +60,9 @@ func runVM(cfg *ExecConfig, userCode, version, dhgHome string) (int, map[string]
 	}
 	defer cancel()
 
-	useUffd := os.Getenv("DHG_VM_NO_UFFD") != "1"
+	useUffd := os.Getenv("DH_VM_NO_UFFD") != "1"
 	vmCfg := &vm.VMConfig{
-		DHGHome: dhgHome,
+		DHHome: dhHome,
 		Version: version,
 		Verbose: cfg.Verbose,
 		UseUffd: useUffd,

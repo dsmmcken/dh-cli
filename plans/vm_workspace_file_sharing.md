@@ -2,7 +2,7 @@
 
 ## Context
 
-When running `dhg exec --vm`, user code executes inside a Firecracker microVM that has no access to host files. Scripts that reference local data files (e.g., `read_csv("./tests/sample_data.csv")`) fail with `NoSuchFileException`. This makes the VM mode impractical for any workflow involving external data files.
+When running `dh exec --vm`, user code executes inside a Firecracker microVM that has no access to host files. Scripts that reference local data files (e.g., `read_csv("./tests/sample_data.csv")`) fail with `NoSuchFileException`. This makes the VM mode impractical for any workflow involving external data files.
 
 The goal: make workspace files accessible to the VM with **zero impact** on startup or exec time for the no-files case.
 
@@ -126,10 +126,10 @@ Test cases:
 CGO_ENABLED=0 make build && cp dhg ~/.local/bin/dhg
 
 # Regression — must not regress timing
-time DHG_HOME=/workspace/.dhg dhg exec --vm -v ./tests/basic_script.py
+time DH_HOME=/workspace/.dh dh exec --vm -v ./tests/basic_script.py
 
 # Feature — must work (currently fails)
-time DHG_HOME=/workspace/.dhg dhg exec --vm -v ./tests/basic_import.py
+time DH_HOME=/workspace/.dh dh exec --vm -v ./tests/basic_import.py
 
 # Unit tests
 make test

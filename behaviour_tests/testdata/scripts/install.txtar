@@ -1,6 +1,6 @@
 # install --help shows usage and flags
-exec dhg install --help
-stdout 'dhg install'
+exec dh install --help
+stdout 'dh install'
 stdout '\-\-no-plugins'
 stdout '\-\-python'
 ! stderr .

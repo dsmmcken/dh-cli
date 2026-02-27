@@ -23,7 +23,7 @@ type VersionPickerScreen struct {
 	versions []string
 	cursor   int
 	err      error
-	dhgHome  string
+	dhHome  string
 	width    int
 	height   int
 }
@@ -35,7 +35,7 @@ type pickerKeyMap struct {
 	Quit  key.Binding
 }
 
-func NewVersionPickerScreen(dhgHome string) VersionPickerScreen {
+func NewVersionPickerScreen(dhHome string) VersionPickerScreen {
 	s := spinner.New()
 	s.Spinner = spinner.Dot
 	return VersionPickerScreen{
@@ -59,7 +59,7 @@ func NewVersionPickerScreen(dhgHome string) VersionPickerScreen {
 		},
 		spinner: s,
 		loading: true,
-		dhgHome: dhgHome,
+		dhHome: dhHome,
 	}
 }
 
@@ -115,7 +115,7 @@ func (m VersionPickerScreen) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case key.Matches(msg, m.keys.Enter):
 			if len(m.versions) > 0 {
 				selected := m.versions[m.cursor]
-				return m, pushScreen(NewInstallProgressScreen(m.dhgHome, selected))
+				return m, pushScreen(NewInstallProgressScreen(m.dhHome, selected))
 			}
 		case key.Matches(msg, m.keys.Quit):
 			return m, tea.Quit

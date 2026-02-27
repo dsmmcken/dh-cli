@@ -2,7 +2,7 @@
 
 ## Context
 
-When running `dhg exec --vm`, user code inside the Firecracker microVM has no access to host files. Scripts referencing local data (e.g., `read_csv("./tests/sample_data.csv")`) fail with `NoSuchFileException`. This plan implements a transparent, truly lazy file access mechanism using an LD_PRELOAD shared library that intercepts libc file operations and proxies them to a host file server over vsock.
+When running `dh exec --vm`, user code inside the Firecracker microVM has no access to host files. Scripts referencing local data (e.g., `read_csv("./tests/sample_data.csv")`) fail with `NoSuchFileException`. This plan implements a transparent, truly lazy file access mechanism using an LD_PRELOAD shared library that intercepts libc file operations and proxies them to a host file server over vsock.
 
 **No kernel changes required** — the Firecracker CI kernel (`CONFIG_FUSE_FS is not set`) works as-is.
 
@@ -222,16 +222,16 @@ Add constant: `FileServerPort = 10001`
 
 ```bash
 # 1. Requires re-preparing the snapshot (new rootfs with libworkspace.so)
-DHG_HOME=/workspace/.dhg dhg vm prepare -v
+DH_HOME=/workspace/.dh dh vm prepare -v
 
 # 2. Build dhg
 CGO_ENABLED=0 make build && cp dhg ~/.local/bin/dhg
 
 # 3. Regression — must not regress
-time DHG_HOME=/workspace/.dhg dhg exec --vm -v ./tests/basic_script.py
+time DH_HOME=/workspace/.dh dh exec --vm -v ./tests/basic_script.py
 
 # 4. Feature — must work (currently fails)
-time DHG_HOME=/workspace/.dhg dhg exec --vm -v ./tests/basic_import.py
+time DH_HOME=/workspace/.dh dh exec --vm -v ./tests/basic_import.py
 
 # 5. Unit tests
 make test

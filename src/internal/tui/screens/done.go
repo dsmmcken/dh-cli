@@ -45,9 +45,9 @@ func (m DoneScreen) View() string {
 	b.WriteString(fmt.Sprintf("  Deephaven %s installed and set as default.\n\n", m.version))
 
 	b.WriteString("  Quick start:\n")
-	b.WriteString(lipgloss.NewStyle().Foreground(colorDim).Render("    dhg versions       Manage versions") + "\n")
-	b.WriteString(lipgloss.NewStyle().Foreground(colorDim).Render("    dhg list           See running servers") + "\n")
-	b.WriteString(lipgloss.NewStyle().Foreground(colorDim).Render("    dhg doctor         Check environment") + "\n\n")
+	b.WriteString(lipgloss.NewStyle().Foreground(colorDim).Render("    dh versions       Manage versions") + "\n")
+	b.WriteString(lipgloss.NewStyle().Foreground(colorDim).Render("    dh list           See running servers") + "\n")
+	b.WriteString(lipgloss.NewStyle().Foreground(colorDim).Render("    dh doctor         Check environment") + "\n\n")
 
 	b.WriteString(lipgloss.NewStyle().Foreground(colorPrimary).Bold(true).Render("  > Done"))
 	b.WriteString("\n\n")

@@ -35,19 +35,19 @@ type ConfigScreen struct {
 	cfgPath string
 	loading bool
 	err     error
-	dhgHome string
+	dhHome string
 	width   int
 	height  int
 }
 
-func NewConfigScreen(dhgHome string) ConfigScreen {
+func NewConfigScreen(dhHome string) ConfigScreen {
 	return ConfigScreen{
 		keys: configKeyMap{
 			Back: key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "back")),
 			Quit: key.NewBinding(key.WithKeys("q", "ctrl+c"), key.WithHelp("q", "quit")),
 		},
 		loading: true,
-		dhgHome: dhgHome,
+		dhHome: dhHome,
 	}
 }
 
@@ -111,7 +111,7 @@ func (m ConfigScreen) View() string {
 	}
 
 	b.WriteString("\n")
-	b.WriteString(lipgloss.NewStyle().Foreground(colorDim).Render("  Use 'dhg config set <key> <value>' to modify settings."))
+	b.WriteString(lipgloss.NewStyle().Foreground(colorDim).Render("  Use 'dh config set <key> <value>' to modify settings."))
 	b.WriteString("\n\n")
 	b.WriteString(lipgloss.NewStyle().Foreground(colorDim).Render("  esc back • q quit"))
 

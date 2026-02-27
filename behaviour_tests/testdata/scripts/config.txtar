@@ -1,25 +1,25 @@
 # config path shows config.toml path
-exec dhg config path
-stdout '\.dhg.config\.toml'
+exec dh config path
+stdout '\.dh.config\.toml'
 ! stderr .
 
 # config set then get roundtrip
-exec dhg config set default_version 42.0
-exec dhg config get default_version
+exec dh config set default_version 42.0
+exec dh config get default_version
 stdout '42\.0'
 ! stderr .
 
 # config shows all values in human-readable mode
-exec dhg config
+exec dh config
 stdout 'default_version = 42\.0'
 ! stderr .
 
 # config --json outputs valid JSON
-exec dhg config --json
+exec dh config --json
 stdout '\{'
 stdout '"default_version"'
 ! stderr .
 
 # config get nonexistent key exits 1
-! exec dhg config get nonexistent_key
+! exec dh config get nonexistent_key
 stderr 'unknown config key'

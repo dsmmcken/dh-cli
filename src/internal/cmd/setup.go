@@ -29,21 +29,21 @@ func addSetupCommand(parent *cobra.Command) {
 
 func runSetup(cmd *cobra.Command, args []string) error {
 	config.SetConfigDir(ConfigDir)
-	dhgHome := config.DHGHome()
+	dhHome := config.DHHome()
 
 	if nonInteractiveFlag {
-		return runNonInteractiveSetup(cmd, dhgHome)
+		return runNonInteractiveSetup(cmd, dhHome)
 	}
 
 	// Interactive mode: launch wizard TUI
-	p := tea.NewProgram(tui.NewApp(tui.WizardMode, dhgHome), tea.WithAltScreen())
+	p := tea.NewProgram(tui.NewApp(tui.WizardMode, dhHome), tea.WithAltScreen())
 	_, err := p.Run()
 	return err
 }
 
-func runNonInteractiveSetup(cmd *cobra.Command, dhgHome string) error {
+func runNonInteractiveSetup(cmd *cobra.Command, dhHome string) error {
 	// Detect Java
-	javaInfo, err := java.Detect(dhgHome)
+	javaInfo, err := java.Detect(dhHome)
 	if err != nil {
 		javaInfo = &java.JavaInfo{Found: false}
 	}
@@ -78,7 +78,7 @@ func runNonInteractiveSetup(cmd *cobra.Command, dhgHome string) error {
 		pythonVer = "3.13"
 	}
 
-	installErr := versions.Install(dhgHome, latest, pythonVer, plugins, nil)
+	installErr := versions.Install(dhHome, latest, pythonVer, plugins, nil)
 	installed := installErr == nil
 
 	if installed {

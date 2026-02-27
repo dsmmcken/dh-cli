@@ -1,8 +1,8 @@
-# Plan: Go REPL TUI (`dhg repl`)
+# Plan: Go REPL TUI (`dh repl`)
 
 ## Context
 
-The `dhg` CLI already has `dhg exec` (batch code execution) and `dhg serve` (run script + keep server alive). Both use an embedded Python `runner.py` that starts a Deephaven server, connects via pydeephaven, executes code, and returns results.
+The `dh` CLI already has `dh exec` (batch code execution) and `dh serve` (run script + keep server alive). Both use an embedded Python `runner.py` that starts a Deephaven server, connects via pydeephaven, executes code, and returns results.
 
 The Python CLI (`deephaven_cli`) has a rich Textual-based REPL. We're building the Go equivalent using bubbletea/charm, informed by a wireframe mockup that specifies:
 
@@ -94,7 +94,7 @@ go_src/internal/
 │   ├── history.go                 # NEW - Command history (file-backed)
 │   └── styles.go                  # NEW - REPL-specific lipgloss styles
 ├── cmd/
-│   └── repl.go                    # NEW - `dhg repl` cobra command
+│   └── repl.go                    # NEW - `dh repl` cobra command
 ```
 
 ## Implementation Scope
@@ -225,7 +225,7 @@ Goal: Full mockup layout with sidebar, persistent history, and keyboard shortcut
 
 2. **`repl/history.go`** — Command history manager
    - `History` struct: `entries []string`, `path string`, `cursor int`, `draft string`
-   - Loads from `~/.dhg/repl_history` on startup
+   - Loads from `~/.dh/repl_history` on startup
    - `Add(cmd)`: appends, deduplicates consecutive, writes to file
    - `Up()` / `Down()`: navigate with cursor, preserves draft
    - Max 500 entries
@@ -299,8 +299,8 @@ No new external dependencies needed — `bubbles` already provides textarea, vie
 ### Phase 1 Testing
 ```bash
 cd go_src && make build
-./dhg repl                           # Embedded mode
-./dhg repl --host localhost:10000    # Remote mode
+./dh repl                           # Embedded mode
+./dh repl --host localhost:10000    # Remote mode
 
 # In the REPL:
 # Tab bar shows [log] tab (always selected by default)

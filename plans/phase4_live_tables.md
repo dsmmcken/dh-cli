@@ -739,7 +739,7 @@ func (s *Session) Done() <-chan struct{} {
 cd go_src && make build
 
 # Test 1: Static table (no subscription)
-./dhg repl
+./dh repl
 > from deephaven import empty_table
 > t = empty_table(5).update(["X = i"])
 # Tab bar shows "t (5)" with no LIVE badge

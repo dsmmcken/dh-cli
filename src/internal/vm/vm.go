@@ -31,7 +31,7 @@ const (
 
 // VMConfig holds configuration for VM operations.
 type VMConfig struct {
-	DHGHome string // ~/.dhg
+	DHHome string // ~/.dh
 	Version string // Deephaven version
 	Verbose bool
 	UseUffd bool // use UFFD eager page population for snapshot restore
@@ -39,17 +39,17 @@ type VMConfig struct {
 
 // VMPaths returns canonical paths for VM artifacts.
 type VMPaths struct {
-	Base        string // ~/.dhg/vm
-	Firecracker string // ~/.dhg/vm/firecracker
-	Kernel      string // ~/.dhg/vm/vmlinux
-	RootfsDir   string // ~/.dhg/vm/rootfs
-	SnapshotDir string // ~/.dhg/vm/snapshots
-	RunDir      string // ~/.dhg/vm/run
+	Base        string // ~/.dh/vm
+	Firecracker string // ~/.dh/vm/firecracker
+	Kernel      string // ~/.dh/vm/vmlinux
+	RootfsDir   string // ~/.dh/vm/rootfs
+	SnapshotDir string // ~/.dh/vm/snapshots
+	RunDir      string // ~/.dh/vm/run
 }
 
 // NewVMPaths creates VMPaths for a given DHG home directory.
-func NewVMPaths(dhgHome string) *VMPaths {
-	base := filepath.Join(dhgHome, "vm")
+func NewVMPaths(dhHome string) *VMPaths {
+	base := filepath.Join(dhHome, "vm")
 	return &VMPaths{
 		Base:        base,
 		Firecracker: filepath.Join(base, "firecracker"),

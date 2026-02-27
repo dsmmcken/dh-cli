@@ -12,9 +12,9 @@ import (
 	"strings"
 )
 
-// Install downloads and installs a Temurin JDK to <dhgHome>/java/.
-func Install(dhgHome string, jdkVersion int, force bool) (*JavaInfo, error) {
-	javaDir := filepath.Join(dhgHome, "java")
+// Install downloads and installs a Temurin JDK to <dhHome>/java/.
+func Install(dhHome string, jdkVersion int, force bool) (*JavaInfo, error) {
+	javaDir := filepath.Join(dhHome, "java")
 
 	// Check for existing installation
 	if !force {

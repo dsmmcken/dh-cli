@@ -30,7 +30,7 @@ func newUninstallCmd() *cobra.Command {
 
 func runUninstall(cmd *cobra.Command, args []string) error {
 	config.SetConfigDir(ConfigDir)
-	dhgHome := config.DHGHome()
+	dhHome := config.DHHome()
 	version := args[0]
 
 	// Confirm unless --force or --json
@@ -45,7 +45,7 @@ func runUninstall(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	if err := versions.Uninstall(dhgHome, version); err != nil {
+	if err := versions.Uninstall(dhHome, version); err != nil {
 		if output.IsJSON() {
 			return output.PrintError(cmd.ErrOrStderr(), "uninstall_error", err.Error())
 		}
@@ -59,7 +59,7 @@ func runUninstall(cmd *cobra.Command, args []string) error {
 	}
 	if cfg.DefaultVersion == version {
 		// Find the latest remaining version
-		installed, err := versions.ListInstalled(dhgHome)
+		installed, err := versions.ListInstalled(dhHome)
 		if err != nil {
 			return err
 		}

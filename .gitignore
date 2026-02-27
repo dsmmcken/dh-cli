@@ -39,12 +39,12 @@ htmlcov/
 .nox/
 
 # Go binaries
-# Go binary
-dhg
-src/dhg
+# Go binary (build output in repo root)
+/dh
+/src/dh
 
-# DHG runtime artifacts (VM snapshots, firecracker, rootfs)
-.dhg/
+# DH runtime artifacts (VM snapshots, firecracker, rootfs)
+.dh/
 
 # OS
 .DS_Store

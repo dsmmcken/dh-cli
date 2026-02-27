@@ -12,9 +12,9 @@ import (
 // ExecCommand is a wrapper around exec.Command for testability.
 var ExecCommand = exec.Command
 
-// Install installs a Deephaven version into <dhgHome>/versions/<version>/.
-func Install(dhgHome, version, pythonVer string, plugins []string, onProgress func(string)) error {
-	versionDir := filepath.Join(dhgHome, "versions", version)
+// Install installs a Deephaven version into <dhHome>/versions/<version>/.
+func Install(dhHome, version, pythonVer string, plugins []string, onProgress func(string)) error {
+	versionDir := filepath.Join(dhHome, "versions", version)
 
 	// Check if already installed
 	if _, err := os.Stat(versionDir); err == nil {

@@ -41,10 +41,10 @@ Use for:
 Opens browser automatically. Server runs until Ctrl+C.
 
 Examples:
-  dhg serve dashboard.py
-  dhg serve dashboard.py --port 8080
-  dhg serve dashboard.py --iframe my_widget
-  dhg serve dashboard.py --no-browser`,
+  dh serve dashboard.py
+  dh serve dashboard.py --port 8080
+  dh serve dashboard.py --iframe my_widget
+  dh serve dashboard.py --no-browser`,
 		Args: cobra.ExactArgs(1),
 		RunE: runServe,
 	}
@@ -71,8 +71,8 @@ func runServe(cmd *cobra.Command, args []string) error {
 
 	// Resolve version
 	config.SetConfigDir(ConfigDir)
-	dhgHome := config.DHGHome()
-	envVersion := os.Getenv("DHG_VERSION")
+	dhHome := config.DHHome()
+	envVersion := os.Getenv("DH_VERSION")
 
 	version, err := config.ResolveVersion(serveVersionFlag, envVersion)
 	if err != nil {
@@ -85,7 +85,7 @@ func runServe(cmd *cobra.Command, args []string) error {
 	}
 
 	// Find venv python
-	pythonBin, err := dhexec.FindVenvPython(dhgHome, version)
+	pythonBin, err := dhexec.FindVenvPython(dhHome, version)
 	if err != nil {
 		fmt.Fprintf(cmd.ErrOrStderr(), "Error: finding venv python: %v\n", err)
 		os.Exit(output.ExitError)
@@ -102,7 +102,7 @@ func runServe(cmd *cobra.Command, args []string) error {
 	}
 
 	// Detect Java (serve is always embedded mode)
-	javaInfo, err := java.Detect(dhgHome)
+	javaInfo, err := java.Detect(dhHome)
 	if err != nil {
 		fmt.Fprintf(cmd.ErrOrStderr(), "Error: detecting Java: %v\n", err)
 		os.Exit(output.ExitError)
@@ -186,8 +186,8 @@ func runServe(cmd *cobra.Command, args []string) error {
 	scanner := bufio.NewScanner(stdoutPipe)
 	for scanner.Scan() {
 		line := scanner.Text()
-		if strings.HasPrefix(line, "__DHG_READY__:") {
-			url := strings.TrimPrefix(line, "__DHG_READY__:")
+		if strings.HasPrefix(line, "__DH_READY__:") {
+			url := strings.TrimPrefix(line, "__DH_READY__:")
 			if !serveNoBrowserFlag {
 				screens.OpenBrowser(url)
 			}

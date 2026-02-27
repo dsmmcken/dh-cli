@@ -7,50 +7,50 @@ import (
 )
 
 func TestNewVMPaths(t *testing.T) {
-	paths := NewVMPaths("/home/user/.dhg")
+	paths := NewVMPaths("/home/user/.dh")
 
-	if paths.Base != "/home/user/.dhg/vm" {
-		t.Errorf("Base = %q, want %q", paths.Base, "/home/user/.dhg/vm")
+	if paths.Base != "/home/user/.dh/vm" {
+		t.Errorf("Base = %q, want %q", paths.Base, "/home/user/.dh/vm")
 	}
-	if paths.Firecracker != "/home/user/.dhg/vm/firecracker" {
-		t.Errorf("Firecracker = %q, want %q", paths.Firecracker, "/home/user/.dhg/vm/firecracker")
+	if paths.Firecracker != "/home/user/.dh/vm/firecracker" {
+		t.Errorf("Firecracker = %q, want %q", paths.Firecracker, "/home/user/.dh/vm/firecracker")
 	}
-	if paths.Kernel != "/home/user/.dhg/vm/vmlinux" {
-		t.Errorf("Kernel = %q, want %q", paths.Kernel, "/home/user/.dhg/vm/vmlinux")
+	if paths.Kernel != "/home/user/.dh/vm/vmlinux" {
+		t.Errorf("Kernel = %q, want %q", paths.Kernel, "/home/user/.dh/vm/vmlinux")
 	}
-	if paths.RootfsDir != "/home/user/.dhg/vm/rootfs" {
-		t.Errorf("RootfsDir = %q, want %q", paths.RootfsDir, "/home/user/.dhg/vm/rootfs")
+	if paths.RootfsDir != "/home/user/.dh/vm/rootfs" {
+		t.Errorf("RootfsDir = %q, want %q", paths.RootfsDir, "/home/user/.dh/vm/rootfs")
 	}
-	if paths.SnapshotDir != "/home/user/.dhg/vm/snapshots" {
-		t.Errorf("SnapshotDir = %q, want %q", paths.SnapshotDir, "/home/user/.dhg/vm/snapshots")
+	if paths.SnapshotDir != "/home/user/.dh/vm/snapshots" {
+		t.Errorf("SnapshotDir = %q, want %q", paths.SnapshotDir, "/home/user/.dh/vm/snapshots")
 	}
-	if paths.RunDir != "/home/user/.dhg/vm/run" {
-		t.Errorf("RunDir = %q, want %q", paths.RunDir, "/home/user/.dhg/vm/run")
+	if paths.RunDir != "/home/user/.dh/vm/run" {
+		t.Errorf("RunDir = %q, want %q", paths.RunDir, "/home/user/.dh/vm/run")
 	}
 }
 
 func TestRootfsForVersion(t *testing.T) {
-	paths := NewVMPaths("/home/user/.dhg")
+	paths := NewVMPaths("/home/user/.dh")
 	got := paths.RootfsForVersion("0.36.0")
-	want := "/home/user/.dhg/vm/rootfs/deephaven-0.36.0.ext4"
+	want := "/home/user/.dh/vm/rootfs/deephaven-0.36.0.ext4"
 	if got != want {
 		t.Errorf("RootfsForVersion = %q, want %q", got, want)
 	}
 }
 
 func TestSnapshotDirForVersion(t *testing.T) {
-	paths := NewVMPaths("/home/user/.dhg")
+	paths := NewVMPaths("/home/user/.dh")
 	got := paths.SnapshotDirForVersion("0.36.0")
-	want := "/home/user/.dhg/vm/snapshots/0.36.0"
+	want := "/home/user/.dh/vm/snapshots/0.36.0"
 	if got != want {
 		t.Errorf("SnapshotDirForVersion = %q, want %q", got, want)
 	}
 }
 
 func TestInstanceDir(t *testing.T) {
-	paths := NewVMPaths("/home/user/.dhg")
+	paths := NewVMPaths("/home/user/.dh")
 	got := paths.InstanceDir("exec-12345")
-	want := "/home/user/.dhg/vm/run/exec-12345"
+	want := "/home/user/.dh/vm/run/exec-12345"
 	if got != want {
 		t.Errorf("InstanceDir = %q, want %q", got, want)
 	}

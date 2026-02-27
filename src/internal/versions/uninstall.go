@@ -7,8 +7,8 @@ import (
 )
 
 // Uninstall removes a Deephaven version directory.
-func Uninstall(dhgHome, version string) error {
-	versionDir := filepath.Join(dhgHome, "versions", version)
+func Uninstall(dhHome, version string) error {
+	versionDir := filepath.Join(dhHome, "versions", version)
 
 	if _, err := os.Stat(versionDir); os.IsNotExist(err) {
 		return fmt.Errorf("version %s is not installed", version)

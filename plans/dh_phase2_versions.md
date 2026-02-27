@@ -5,7 +5,7 @@
 
 ## Goal
 
-Implement Deephaven version install/uninstall/use/list, PyPI version lookup, and the corresponding `dhg` commands. This is the core workflow: installing a Deephaven version into `~/.dhg/versions/<VERSION>/.venv`.
+Implement Deephaven version install/uninstall/use/list, PyPI version lookup, and the corresponding `dh` commands. This is the core workflow: installing a Deephaven version into `~/.dh/versions/<VERSION>/.venv`.
 
 ## Files to create/modify
 
@@ -19,10 +19,10 @@ go_src/
       pypi.go              # PyPI API client (fetch available versions)
       meta.go              # Read/write meta.toml per version
   cmd/dhg/
-    install.go             # dhg install [VERSION]
-    uninstall.go           # dhg uninstall <VERSION>
-    use.go                 # dhg use <VERSION>
-    versions.go            # dhg versions
+    install.go             # dh install [VERSION]
+    uninstall.go           # dh uninstall <VERSION>
+    use.go                 # dh use <VERSION>
+    versions.go            # dh versions
 ```
 
 ## Internal package: `internal/versions`
@@ -62,22 +62,22 @@ go_src/
 
 ## Commands
 
-### `dhg install [VERSION]`
+### `dh install [VERSION]`
 - Default VERSION: `latest` (resolved from PyPI)
 - Flags: `--no-plugins`, `--python`
 - Human output: progress spinner/bar
 - JSON output: `{"version": "42.0", "status": "installed", ...}`
 
-### `dhg uninstall <VERSION>`
+### `dh uninstall <VERSION>`
 - Flag: `--force` (skip confirmation)
 - Confirmation prompt unless `--force` or `--json`
 
-### `dhg use <VERSION>`
-- Flag: `--local` (write `.dhgrc` in cwd)
+### `dh use <VERSION>`
+- Flag: `--local` (write `.dhrc` in cwd)
 - Validates version is installed
 - Uses config package to write
 
-### `dhg versions`
+### `dh versions`
 - Flags: `--remote`, `--limit`, `--all`
 - Human output: table with version, default marker, install date
 - JSON output: `{"installed": [...], "default_version": "...", "remote": [...]}`
@@ -93,19 +93,19 @@ go_src/
 - List scans directory, reads metadata
 
 ### Behaviour tests (`go_behaviour_tests/testdata/scripts/`)
-- `install.txtar`: `dhg install` creates version dir, `dhg install --json` returns JSON
-- `versions.txtar`: `dhg versions --json` with nothing installed → empty array; after install → populated
-- `use.txtar`: `dhg use <ver>` updates config, `dhg use <ver> --local` creates `.dhgrc`
-- `uninstall.txtar`: `dhg uninstall <ver> --force` removes dir
+- `install.txtar`: `dh install` creates version dir, `dh install --json` returns JSON
+- `versions.txtar`: `dh versions --json` with nothing installed → empty array; after install → populated
+- `use.txtar`: `dh use <ver>` updates config, `dh use <ver> --local` creates `.dhrc`
+- `uninstall.txtar`: `dh uninstall <ver> --force` removes dir
 
 ## Verification
 
 ```bash
-./dhg versions                    # empty
-./dhg install --json              # installs latest
-./dhg versions --json             # shows installed
-./dhg use 42.0
-./dhg config get default_version  # → 42.0
-./dhg uninstall 42.0 --force
-./dhg versions                    # empty again
+./dh versions                    # empty
+./dh install --json              # installs latest
+./dh versions --json             # shows installed
+./dh use 42.0
+./dh config get default_version  # → 42.0
+./dh uninstall 42.0 --force
+./dh versions                    # empty again
 ```

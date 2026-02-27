@@ -28,7 +28,7 @@ Subcommands:
   clean    Remove VM artifacts (rootfs, snapshots, run state)`,
 	}
 
-	// dhg vm prepare
+	// dh vm prepare
 	prepareCmd := &cobra.Command{
 		Use:   "prepare",
 		Short: "Build rootfs and create VM snapshot",
@@ -49,18 +49,18 @@ Requirements: Linux, /dev/kvm access, Docker.`,
 	}
 	prepareCmd.Flags().StringVar(&vmVersionFlag, "version", "", "Deephaven version (default: resolved version)")
 
-	// dhg vm status
+	// dh vm status
 	statusCmd := &cobra.Command{
 		Use:   "status",
 		Short: "Show VM prerequisites and snapshot status",
 		RunE:  runVMStatus,
 	}
 
-	// dhg vm clean
+	// dh vm clean
 	cleanCmd := &cobra.Command{
 		Use:   "clean",
 		Short: "Remove VM artifacts",
-		Long:  "Remove rootfs images, snapshots, and runtime state from ~/.dhg/vm/.",
+		Long:  "Remove rootfs images, snapshots, and runtime state from ~/.dh/vm/.",
 		RunE:  runVMClean,
 	}
 	cleanCmd.Flags().StringVar(&vmVersionFlag, "version", "", "Clean only this version (default: all)")
@@ -71,9 +71,9 @@ Requirements: Linux, /dev/kvm access, Docker.`,
 
 func runVMPrepare(cmd *cobra.Command, args []string) error {
 	config.SetConfigDir(ConfigDir)
-	dhgHome := config.DHGHome()
+	dhHome := config.DHHome()
 
-	version, err := config.ResolveVersion(vmVersionFlag, os.Getenv("DHG_VERSION"))
+	version, err := config.ResolveVersion(vmVersionFlag, os.Getenv("DH_VERSION"))
 	if err != nil {
 		// No version configured anywhere — fetch latest from PyPI
 		fmt.Fprintf(cmd.ErrOrStderr(), "No version specified, fetching latest from PyPI...\n")
@@ -84,7 +84,7 @@ func runVMPrepare(cmd *cobra.Command, args []string) error {
 		version = latest
 	}
 
-	paths := vm.NewVMPaths(dhgHome)
+	paths := vm.NewVMPaths(dhHome)
 
 	// Step 1: Download firecracker binary
 	fmt.Fprintf(cmd.ErrOrStderr(), "Ensuring Firecracker binary...\n")
@@ -137,7 +137,7 @@ func runVMPrepare(cmd *cobra.Command, args []string) error {
 	// Step 5: Boot VM and create snapshot
 	fmt.Fprintf(cmd.ErrOrStderr(), "Booting VM and creating snapshot for version %s...\n", version)
 	vmCfg := &vm.VMConfig{
-		DHGHome: dhgHome,
+		DHHome: dhHome,
 		Version: version,
 		Verbose: output.IsVerbose(),
 	}
@@ -145,7 +145,7 @@ func runVMPrepare(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("creating snapshot: %w", err)
 	}
 
-	fmt.Fprintf(cmd.ErrOrStderr(), "Snapshot ready for version %s. Use 'dhg exec --vm' for fast execution.\n", version)
+	fmt.Fprintf(cmd.ErrOrStderr(), "Snapshot ready for version %s. Use 'dh exec --vm' for fast execution.\n", version)
 
 	if output.IsJSON() {
 		return output.PrintJSON(cmd.OutOrStdout(), map[string]any{
@@ -160,8 +160,8 @@ func runVMPrepare(cmd *cobra.Command, args []string) error {
 
 func runVMStatus(cmd *cobra.Command, args []string) error {
 	config.SetConfigDir(ConfigDir)
-	dhgHome := config.DHGHome()
-	paths := vm.NewVMPaths(dhgHome)
+	dhHome := config.DHHome()
+	paths := vm.NewVMPaths(dhHome)
 
 	// Check prerequisites
 	fmt.Fprintln(cmd.OutOrStdout(), "Prerequisites:")
@@ -217,8 +217,8 @@ func runVMStatus(cmd *cobra.Command, args []string) error {
 
 func runVMClean(cmd *cobra.Command, args []string) error {
 	config.SetConfigDir(ConfigDir)
-	dhgHome := config.DHGHome()
-	paths := vm.NewVMPaths(dhgHome)
+	dhHome := config.DHHome()
+	paths := vm.NewVMPaths(dhHome)
 
 	if vmVersionFlag != "" {
 		// Clean specific version

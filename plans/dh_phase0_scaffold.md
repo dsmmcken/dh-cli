@@ -4,7 +4,7 @@
 
 ## Goal
 
-Set up the Go module, directory structure, Cobra root command with global flags, and the test harnesses for both test suites. After this phase, `dhg --version`, `dhg --help`, and `go test` in both test directories work.
+Set up the Go module, directory structure, Cobra root command with global flags, and the test harnesses for both test suites. After this phase, `dh --version`, `dh --help`, and `go test` in both test directories work.
 
 ## Deliverables
 
@@ -42,10 +42,10 @@ go_behaviour_tests/
 
 ### Root command (`root.go`)
 
-- `dhg` with version string (injected via `-ldflags -X`)
+- `dh` with version string (injected via `-ldflags -X`)
 - Global persistent flags: `--json`, `--verbose`, `--quiet`, `--no-color`, `--config-dir`
 - `--version` flag on root only
-- Environment variable bindings: `DHG_HOME`, `NO_COLOR`, `DHG_JSON`
+- Environment variable bindings: `DH_HOME`, `NO_COLOR`, `DH_JSON`
 - Mutual exclusivity: `--verbose` + `--quiet` returns error
 - `--json` implies `--quiet`
 - When no subcommand and not TTY → print help
@@ -87,15 +87,15 @@ go_behaviour_tests:
 - Output helpers: `PrintJSON` produces valid JSON, `PrintError` produces error envelope
 
 ### Behaviour tests
-- `version.txtar`: `dhg --version` → stdout matches `^dhg v\d+\.\d+\.\d+`, no stderr
-- `help.txtar`: `dhg --help` → stdout contains `Usage:` and `dhg [command]`
+- `version.txtar`: `dh --version` → stdout matches `^dhg v\d+\.\d+\.\d+`, no stderr
+- `help.txtar`: `dh --help` → stdout contains `Usage:` and `dh [command]`
 - `global_flags.txtar`: `--verbose` + `--quiet` → exit 1
-- `error_codes.txtar`: `dhg nonexistent` → exit 1, stderr contains error
+- `error_codes.txtar`: `dh nonexistent` → exit 1, stderr contains error
 
 ## Verification
 
 ```bash
-cd go_src && go build -o dhg ./cmd/dhg && ./dhg --version
+cd go_src && go build -o dhg ./cmd/dhg && ./dh --version
 cd go_unit_tests && go test ./...
 cd go_behaviour_tests && go test ./...
 ```

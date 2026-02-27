@@ -1,8 +1,8 @@
-# Plan: Port `dh exec` to Go `dhg exec`
+# Plan: Port `dh exec` to Go `dh exec`
 
 ## Context
 
-The Python `dh exec` command is a batch-mode execution tool for running Python scripts on Deephaven servers. It's used for automation and AI agent workflows. The Go `dhg` CLI currently handles only management tasks (install, config, doctor, etc). This plan adds `dhg exec` with full feature parity.
+The Python `dh exec` command is a batch-mode execution tool for running Python scripts on Deephaven servers. It's used for automation and AI agent workflows. The Go `dh` CLI currently handles only management tasks (install, config, doctor, etc). This plan adds `dh exec` with full feature parity.
 
 ## Architecture
 
@@ -12,7 +12,7 @@ Go cannot start a Deephaven server directly (requires Python + JVM). The approac
 - **Python handles**: Server start, client connect, code execution, table previews, structured JSON output (via an embedded runner script)
 
 ```
-dhg exec -c "print('hello')"
+dh exec -c "print('hello')"
   |
   Go: parse flags → resolve version → find venv python → detect Java
   |   (--verbose prints: "Resolved version 0.35.1", "Using Java at ...", "Venv: ...")
@@ -111,7 +111,7 @@ Logic in `Run()`:
 1. Validate inputs (exactly one of -c / script / stdin)
 2. Read code from source (file, stdin, or -c) into a string
 3. Resolve version via `config.ResolveVersion()`
-4. Find venv python: `~/.dhg/versions/<ver>/.venv/bin/python`
+4. Find venv python: `~/.dh/versions/<ver>/.venv/bin/python`
 5. Auto-install `pydeephaven` if missing from venv (matching server version)
 6. If embedded mode: detect Java via `java.Detect()`, set JAVA_HOME
 7. If `--verbose`: print Go-side details to stderr (resolved version, Java path, venv path)
@@ -222,7 +222,7 @@ pipArgs := []string{"pip", "install", "--python", pythonBin,
 
 ### 3. `go_src/cmd/dhg/main.go` — `-c` shorthand
 
-Before `cmd.Execute()`, rewrite `dhg -c "code"` → `dhg exec -c "code"` (matching Python cli.py line 201-202).
+Before `cmd.Execute()`, rewrite `dh -c "code"` → `dh exec -c "code"` (matching Python cli.py line 201-202).
 
 ## Implementation Order
 
@@ -239,14 +239,14 @@ Before `cmd.Execute()`, rewrite `dhg -c "code"` → `dhg exec -c "code"` (matchi
 ## Verification
 
 1. `cd go_src && make test` — all existing + new unit tests pass
-2. `dhg exec -c "print('hello')"` — prints "hello", exits 0
-3. `dhg -c "print('shorthand')"` — shorthand works
-4. `echo "print('stdin')" | dhg exec -` — stdin works
-5. `dhg exec script.py` — file execution works
-6. `dhg exec -c "from deephaven import empty_table; t = empty_table(5)"` — shows table preview
-7. `dhg exec -c "import time; time.sleep(100)" --timeout 2` — exits 3 after 2s
-8. `dhg exec -c "print('json')" --json` — outputs structured JSON with tables, exit_code, etc.
-9. `dhg exec -c "1/0"` — exits 1 with traceback on stderr
-10. `dhg exec -c "print('remote')" --host localhost --port 10000` — remote mode
-11. `dhg exec -c "print('hello')" -v` — verbose shows "Resolved version ...", "Using Java at ...", etc.
+2. `dh exec -c "print('hello')"` — prints "hello", exits 0
+3. `dh -c "print('shorthand')"` — shorthand works
+4. `echo "print('stdin')" | dh exec -` — stdin works
+5. `dh exec script.py` — file execution works
+6. `dh exec -c "from deephaven import empty_table; t = empty_table(5)"` — shows table preview
+7. `dh exec -c "import time; time.sleep(100)" --timeout 2` — exits 3 after 2s
+8. `dh exec -c "print('json')" --json` — outputs structured JSON with tables, exit_code, etc.
+9. `dh exec -c "1/0"` — exits 1 with traceback on stderr
+10. `dh exec -c "print('remote')" --host localhost --port 10000` — remote mode
+11. `dh exec -c "print('hello')" -v` — verbose shows "Resolved version ...", "Using Java at ...", etc.
 12. Auto-install: exec on a venv without pydeephaven installs it automatically

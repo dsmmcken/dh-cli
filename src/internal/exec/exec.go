@@ -71,7 +71,7 @@ type ExecConfig struct {
 // ExecCommand wraps exec.Command for testability.
 var ExecCommand = exec.Command
 
-// Run executes the dhg exec workflow. Returns exit code, optional JSON result, and error.
+// Run executes the dh exec workflow. Returns exit code, optional JSON result, and error.
 func Run(cfg *ExecConfig) (int, map[string]any, error) {
 	runStart := time.Now()
 
@@ -112,13 +112,13 @@ func Run(cfg *ExecConfig) (int, map[string]any, error) {
 
 	// Resolve version
 	config.SetConfigDir(cfg.ConfigDir)
-	dhgHome := config.DHGHome()
-	envVersion := os.Getenv("DHG_VERSION")
+	dhHome := config.DHHome()
+	envVersion := os.Getenv("DH_VERSION")
 
 	version, err := config.ResolveVersion(cfg.Version, envVersion)
 	if err != nil && cfg.VMMode {
 		// In VM mode, fall back to the latest available snapshot
-		if v, snapErr := latestSnapshotVersion(dhgHome); snapErr == nil {
+		if v, snapErr := latestSnapshotVersion(dhHome); snapErr == nil {
 			version = v
 			err = nil
 		}
@@ -137,11 +137,11 @@ func Run(cfg *ExecConfig) (int, map[string]any, error) {
 		if isRemote {
 			return output.ExitError, nil, fmt.Errorf("cannot use both --vm and --host flags")
 		}
-		return runVM(cfg, userCode, version, dhgHome)
+		return runVM(cfg, userCode, version, dhHome)
 	}
 
 	// Find venv python
-	pythonBin, err := FindVenvPython(dhgHome, version)
+	pythonBin, err := FindVenvPython(dhHome, version)
 	if err != nil {
 		return output.ExitError, nil, fmt.Errorf("finding venv python: %w", err)
 	}
@@ -158,7 +158,7 @@ func Run(cfg *ExecConfig) (int, map[string]any, error) {
 	// Detect Java for embedded mode
 	var javaHome string
 	if !isRemote {
-		javaInfo, err := java.Detect(dhgHome)
+		javaInfo, err := java.Detect(dhHome)
 		if err != nil {
 			return output.ExitError, nil, fmt.Errorf("detecting Java: %w", err)
 		}
@@ -391,12 +391,12 @@ func buildRunnerArgs(cfg *ExecConfig, isRemote bool) []string {
 }
 
 // FindVenvPython locates the venv python binary for a given version.
-func FindVenvPython(dhgHome, version string) (string, error) {
+func FindVenvPython(dhHome, version string) (string, error) {
 	var pythonBin string
 	if runtime.GOOS == "windows" {
-		pythonBin = filepath.Join(dhgHome, "versions", version, ".venv", "Scripts", "python.exe")
+		pythonBin = filepath.Join(dhHome, "versions", version, ".venv", "Scripts", "python.exe")
 	} else {
-		pythonBin = filepath.Join(dhgHome, "versions", version, ".venv", "bin", "python")
+		pythonBin = filepath.Join(dhHome, "versions", version, ".venv", "bin", "python")
 	}
 	if _, err := os.Stat(pythonBin); err != nil {
 		return "", fmt.Errorf("venv python not found at %s (is version %s installed?)", pythonBin, version)
@@ -429,8 +429,8 @@ func EnsurePydeephaven(pythonBin, version string, quiet bool, stderr io.Writer) 
 // latestSnapshotVersion scans the VM snapshots directory and returns the
 // latest version that has a complete snapshot. This allows --vm mode to
 // work without an explicit version when a snapshot has been prepared.
-func latestSnapshotVersion(dhgHome string) (string, error) {
-	snapshotDir := filepath.Join(dhgHome, "vm", "snapshots")
+func latestSnapshotVersion(dhHome string) (string, error) {
+	snapshotDir := filepath.Join(dhHome, "vm", "snapshots")
 	entries, err := os.ReadDir(snapshotDir)
 	if err != nil {
 		return "", err

@@ -1,15 +1,15 @@
-# Plan: Add `--vm` Flag to `dhg exec` (Firecracker MicroVM Mode)
+# Plan: Add `--vm` Flag to `dh exec` (Firecracker MicroVM Mode)
 
 ## Context
 
-The `dhg exec` command currently starts a Deephaven server embedded in a Python/JVM process, which takes several seconds for JVM startup. This plan adds an experimental `--vm` flag that uses Firecracker microVM snapshot-restore to achieve near-instant (~10-20ms) Deephaven server startup. A pre-booted Deephaven server is snapshotted, and each `exec --vm` invocation restores a fresh VM from that snapshot.
+The `dh exec` command currently starts a Deephaven server embedded in a Python/JVM process, which takes several seconds for JVM startup. This plan adds an experimental `--vm` flag that uses Firecracker microVM snapshot-restore to achieve near-instant (~10-20ms) Deephaven server startup. A pre-booted Deephaven server is snapshotted, and each `exec --vm` invocation restores a fresh VM from that snapshot.
 
 **Key insight:** `runner.py` already supports `--mode remote` which connects to an existing Deephaven server. The VM just provides the server; runner.py connects to it over the network without any changes.
 
 ## Architecture
 
 ```
-dhg exec --vm -c "..."
+dh exec --vm -c "..."
   1. Restore Firecracker VM from snapshot (~10ms)
      -> VM resumes with Deephaven already running at 172.16.0.2:10000
   2. Launch runner.py --mode remote --host 172.16.0.2 --port 10000
@@ -30,7 +30,7 @@ go_src/internal/vm/
   vm_unsupported.go   # //go:build !linux stubs
 
 go_src/internal/cmd/
-  vm.go               # `dhg vm prepare|status|clean` subcommands
+  vm.go               # `dh vm prepare|status|clean` subcommands
 
 go_src/internal/exec/
   exec_vm_linux.go    # runVM() function, //go:build linux
@@ -50,8 +50,8 @@ go_src/internal/exec/
 ## Artifact Layout
 
 ```
-~/.dhg/vm/
-  firecracker          # Binary (auto-downloaded by `dhg vm prepare`)
+~/.dh/vm/
+  firecracker          # Binary (auto-downloaded by `dh vm prepare`)
   vmlinux              # Kernel (auto-downloaded)
   rootfs/
     deephaven-0.36.0.ext4
@@ -73,17 +73,17 @@ go_src/internal/exec/
 
 ### New flag on exec
 ```
-dhg exec --vm -c "print('hello')"    # Execute using VM mode
-dhg exec --vm script.py              # Works with all existing flags
+dh exec --vm -c "print('hello')"    # Execute using VM mode
+dh exec --vm script.py              # Works with all existing flags
 ```
 
 `--vm` is mutually exclusive with `--host` (both connect remotely; `--vm` manages its own server).
 
-### New `dhg vm` subcommand group
+### New `dh vm` subcommand group
 ```
-dhg vm prepare [--version X]   # Build rootfs + create snapshot
-dhg vm status                  # Show prerequisites + available snapshots
-dhg vm clean [--version X]     # Remove VM artifacts
+dh vm prepare [--version X]   # Build rootfs + create snapshot
+dh vm status                  # Show prerequisites + available snapshots
+dh vm clean [--version X]     # Remove VM artifacts
 ```
 
 ## Implementation Phases
@@ -91,14 +91,14 @@ dhg vm clean [--version X]     # Remove VM artifacts
 ### Phase 1: Package skeleton + prerequisites
 - Create `internal/vm/` with types, paths, constants (`vm.go`)
 - Implement `CheckPrerequisites()` — checks Linux, /dev/kvm, firecracker binary, kernel, iproute2 (`prereqs.go`)
-- Add `dhg vm status` command (`cmd/vm.go`)
+- Add `dh vm status` command (`cmd/vm.go`)
 - Add `--vm` flag to exec (initially returns "snapshot not found" error)
 - Platform stubs for non-Linux (`vm_unsupported.go`, `exec_vm_other.go`)
 
 ### Phase 2: Auto-download + rootfs building
-- `EnsureFirecracker()` — download Firecracker binary from `https://github.com/firecracker-microvm/firecracker/releases` if missing at `~/.dhg/vm/firecracker` (`prereqs.go`)
+- `EnsureFirecracker()` — download Firecracker binary from `https://github.com/firecracker-microvm/firecracker/releases` if missing at `~/.dh/vm/firecracker` (`prereqs.go`)
 - `EnsureKernel()` — download pre-built vmlinux from Firecracker's CI artifacts or a hosted kernel if missing (`prereqs.go`)
-- Both functions are called by `dhg vm prepare` before rootfs build
+- Both functions are called by `dh vm prepare` before rootfs build
 - `BuildRootfs()` using Docker: write Dockerfile + init.sh to temp dir, `docker build`, `docker export`, create ext4 image (`rootfs.go`)
 - Init script inside VM: configures network, starts Deephaven server, signals readiness
 
@@ -109,7 +109,7 @@ dhg vm clean [--version X]     # Remove VM artifacts
 
 ### Phase 4: Snapshot creation
 - `BootAndSnapshot()` using firecracker-go-sdk: boot VM, wait for DH port reachable, pause, create snapshot (`machine.go`)
-- Complete `dhg vm prepare` end-to-end
+- Complete `dh vm prepare` end-to-end
 - Write `metadata.json` with version, IP, port
 
 ### Phase 5: Snapshot restore + exec integration
@@ -120,7 +120,7 @@ dhg vm clean [--version X]     # Remove VM artifacts
 - Stale instance cleanup on startup (`cleanup.go`)
 
 ### Phase 6: Polish
-- `dhg vm clean` command
+- `dh vm clean` command
 - Verbose output (`--verbose` shows restore timing, VM IP, etc.)
 - JSON output mode compatibility
 - Error messages with actionable hints
@@ -133,15 +133,15 @@ dhg vm clean [--version X]     # Remove VM artifacts
 4. **TAP networking** — pydeephaven connects via TCP, which already works over TAP. No vsock proxy needed
 5. **firecracker-go-sdk** — official Go SDK, production-ready, handles snapshot create/restore API
 6. **Linux only** — Firecracker requires KVM. Build constraints ensure clean compilation on other platforms
-7. **Separate prepare step** — `dhg vm prepare` is explicit (2-5 min), `dhg exec --vm` is fast (~10ms restore + network)
+7. **Separate prepare step** — `dh vm prepare` is explicit (2-5 min), `dh exec --vm` is fast (~10ms restore + network)
 
-## Validation / Sequence of Operations for `dhg exec --vm`
+## Validation / Sequence of Operations for `dh exec --vm`
 
 ```
 1. Check prereqs (Linux, /dev/kvm, firecracker binary)
 2. Resolve version, check snapshot exists
 3. Cleanup stale instances from previous crashed runs
-4. Create instance directory in ~/.dhg/vm/run/<id>/
+4. Create instance directory in ~/.dh/vm/run/<id>/
 5. Copy disk.ext4 as COW overlay
 6. Setup TAP device with unique name + IP pair
 7. Restore VM from snapshot (firecracker-go-sdk, ~10ms)
@@ -153,15 +153,15 @@ dhg vm clean [--version X]     # Remove VM artifacts
 
 ## Testing
 
-- `dhg vm status` — verify prerequisite detection works
-- `dhg vm prepare --version <installed_version>` — end-to-end snapshot creation
-- `dhg exec --vm -c "print('hello')"` — basic execution
-- `dhg exec --vm -c "from deephaven import empty_table; t = empty_table(5)"` — table creation
-- `dhg exec --vm --json -c "1+1"` — JSON mode
-- `dhg exec --vm` on non-Linux — clean error message
-- `dhg exec --vm` without snapshot — clear error pointing to `dhg vm prepare`
-- Kill `dhg exec --vm` mid-execution — verify TAP cleanup
-- Two concurrent `dhg exec --vm` — verify no resource collision
+- `dh vm status` — verify prerequisite detection works
+- `dh vm prepare --version <installed_version>` — end-to-end snapshot creation
+- `dh exec --vm -c "print('hello')"` — basic execution
+- `dh exec --vm -c "from deephaven import empty_table; t = empty_table(5)"` — table creation
+- `dh exec --vm --json -c "1+1"` — JSON mode
+- `dh exec --vm` on non-Linux — clean error message
+- `dh exec --vm` without snapshot — clear error pointing to `dh vm prepare`
+- Kill `dh exec --vm` mid-execution — verify TAP cleanup
+- Two concurrent `dh exec --vm` — verify no resource collision
 
 ## New Dependency
 

@@ -1,8 +1,8 @@
 VERSION ?= 0.1.0
 MODULE  := github.com/dsmmcken/dh-cli/src
 LDFLAGS := -ldflags="-s -w -X $(MODULE)/internal/cmd.Version=$(VERSION)"
-BINARY  := dhg
-PKG_NAME := dhg-cli
+BINARY  := dh
+PKG_NAME := dh-cli
 SRC_DIR := src
 
 PLATFORMS := \
@@ -50,7 +50,7 @@ GO_TO_WHEEL_ARGS := $(SRC_DIR) \
 .PHONY: build build-all test vet clean package package-all install-local uninstall
 
 build:
-	CGO_ENABLED=0 go -C $(SRC_DIR) build $(LDFLAGS) -o ../$(BINARY) ./cmd/dhg
+	CGO_ENABLED=0 go -C $(SRC_DIR) build $(LDFLAGS) -o ../$(BINARY) ./cmd/dh
 
 build-all:
 	@mkdir -p dist
@@ -60,7 +60,7 @@ build-all:
 		output="dist/$(BINARY)-$${os}-$${arch}"; \
 		if [ "$$os" = "windows" ]; then output="$${output}.exe"; fi; \
 		echo "Building $$output ..."; \
-		CGO_ENABLED=0 GOOS=$$os GOARCH=$$arch go -C $(SRC_DIR) build $(LDFLAGS) -o ../$$output ./cmd/dhg; \
+		CGO_ENABLED=0 GOOS=$$os GOARCH=$$arch go -C $(SRC_DIR) build $(LDFLAGS) -o ../$$output ./cmd/dh; \
 	done
 
 test:
@@ -84,8 +84,8 @@ package-all:
 
 ## Build wheel for current platform and install via uv tool
 install-local: package
-	uv tool install --force dist/dhg_cli-$(VERSION)-*.whl
+	uv tool install --force dist/dh_cli-$(VERSION)-*.whl
 
-## Uninstall dhg-cli from uv tools
+## Uninstall dh-cli from uv tools
 uninstall:
 	uv tool uninstall $(PKG_NAME)

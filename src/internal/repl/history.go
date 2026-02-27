@@ -16,9 +16,9 @@ type History struct {
 	maxSize int
 }
 
-// NewHistory creates a history manager that loads from ~/.dhg/repl_history.
-func NewHistory(dhgHome string) *History {
-	path := filepath.Join(dhgHome, "repl_history")
+// NewHistory creates a history manager that loads from ~/.dh/repl_history.
+func NewHistory(dhHome string) *History {
+	path := filepath.Join(dhHome, "repl_history")
 	h := &History{
 		entries: []string{},
 		cursor:  -1,

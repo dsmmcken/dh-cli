@@ -55,14 +55,14 @@ var (
 
 func runDoctor(cmd *cobra.Command, args []string) error {
 	config.SetConfigDir(ConfigDir)
-	dhgHome := config.DHGHome()
+	dhHome := config.DHHome()
 
 	checks := []CheckResult{
 		UVChecker(),
-		JavaChecker(dhgHome),
-		VersionsChecker(dhgHome),
-		DefaultVersionChecker(dhgHome),
-		DiskSpaceChecker(dhgHome),
+		JavaChecker(dhHome),
+		VersionsChecker(dhHome),
+		DefaultVersionChecker(dhHome),
+		DiskSpaceChecker(dhHome),
 	}
 
 	healthy := true
@@ -120,7 +120,7 @@ func runDoctor(cmd *cobra.Command, args []string) error {
 	}
 
 	if fixFlag {
-		runFixes(cmd, checks, dhgHome)
+		runFixes(cmd, checks, dhHome)
 	}
 
 	return nil
@@ -163,8 +163,8 @@ func checkUV() CheckResult {
 	}
 }
 
-func checkJava(dhgHome string) CheckResult {
-	info, err := java.Detect(dhgHome)
+func checkJava(dhHome string) CheckResult {
+	info, err := java.Detect(dhHome)
 	if err != nil {
 		return CheckResult{
 			Name:   "Java",
@@ -196,8 +196,8 @@ func checkJava(dhgHome string) CheckResult {
 	}
 }
 
-func checkVersions(dhgHome string) CheckResult {
-	installed, err := versions.ListInstalled(dhgHome)
+func checkVersions(dhHome string) CheckResult {
+	installed, err := versions.ListInstalled(dhHome)
 	if err != nil {
 		return CheckResult{
 			Name:   "Versions",
@@ -222,7 +222,7 @@ func checkVersions(dhgHome string) CheckResult {
 	}
 }
 
-func checkDefaultVersion(dhgHome string) CheckResult {
+func checkDefaultVersion(dhHome string) CheckResult {
 	cfg, err := config.Load()
 	if err != nil {
 		return CheckResult{
@@ -241,7 +241,7 @@ func checkDefaultVersion(dhgHome string) CheckResult {
 	}
 
 	// Check if the default version exists on disk
-	vDir := filepath.Join(dhgHome, "versions", cfg.DefaultVersion)
+	vDir := filepath.Join(dhHome, "versions", cfg.DefaultVersion)
 	info, err := os.Stat(vDir)
 	if err != nil || !info.IsDir() {
 		return CheckResult{
@@ -258,9 +258,9 @@ func checkDefaultVersion(dhgHome string) CheckResult {
 	}
 }
 
-func checkDiskSpace(dhgHome string) CheckResult {
+func checkDiskSpace(dhHome string) CheckResult {
 	var stat unix.Statfs_t
-	target := dhgHome
+	target := dhHome
 	if _, err := os.Stat(target); err != nil {
 		target = filepath.Dir(target)
 	}
@@ -280,7 +280,7 @@ func checkDiskSpace(dhgHome string) CheckResult {
 		status = "warning"
 	}
 
-	displayPath := shortenHome(dhgHome)
+	displayPath := shortenHome(dhHome)
 
 	return CheckResult{
 		Name:   "Disk",
@@ -300,7 +300,7 @@ func shortenHome(path string) string {
 	return path
 }
 
-func runFixes(cmd *cobra.Command, checks []CheckResult, dhgHome string) {
+func runFixes(cmd *cobra.Command, checks []CheckResult, dhHome string) {
 	for _, c := range checks {
 		if c.Status == "ok" {
 			continue
@@ -312,22 +312,22 @@ func runFixes(cmd *cobra.Command, checks []CheckResult, dhgHome string) {
 			}
 		case "Java":
 			if c.Status == "error" {
-				fmt.Fprintln(cmd.OutOrStdout(), "\nFix: Run 'dhg java install' to install Java.")
+				fmt.Fprintln(cmd.OutOrStdout(), "\nFix: Run 'dh java install' to install Java.")
 			}
 		case "Versions":
 			if c.Status == "warning" && strings.Contains(c.Detail, "0 installed") {
-				fmt.Fprintln(cmd.OutOrStdout(), "\nFix: Run 'dhg install' to install a Deephaven version.")
+				fmt.Fprintln(cmd.OutOrStdout(), "\nFix: Run 'dh install' to install a Deephaven version.")
 			}
 		case "Default":
 			if c.Status == "error" {
-				installed, err := versions.ListInstalled(dhgHome)
+				installed, err := versions.ListInstalled(dhHome)
 				if err == nil && len(installed) > 0 {
 					latest := installed[0].Version
 					if err := config.Set("default_version", latest); err == nil {
 						fmt.Fprintf(cmd.OutOrStdout(), "\nFix: Set default version to %s.\n", latest)
 					}
 				} else {
-					fmt.Fprintln(cmd.OutOrStdout(), "\nFix: Install a version first with 'dhg install', then run 'dhg use <version>'.")
+					fmt.Fprintln(cmd.OutOrStdout(), "\nFix: Install a version first with 'dh install', then run 'dh use <version>'.")
 				}
 			}
 		}

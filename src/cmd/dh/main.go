@@ -9,7 +9,7 @@ import (
 )
 
 func main() {
-	// Handle shorthand: dhg -c "code" -> dhg exec -c "code"
+	// Handle shorthand: dh -c "code" -> dh exec -c "code"
 	if len(os.Args) >= 2 && os.Args[1] == "-c" {
 		os.Args = slices.Insert(os.Args, 1, "exec")
 	}

@@ -15,38 +15,38 @@
 make install-local
 ```
 
-This builds a wheel for the current platform and installs it via `uv tool install` to `~/.local/bin/dhg`.
+This builds a wheel for the current platform and installs it via `uv tool install` to `~/.local/bin/dh`.
 
 ### Sandbox / CI fallback (when Python `os.getcwd()` fails)
 
 If the project lives on a virtiofs or FUSE mount, Python's `os.getcwd()` will fail, breaking `uv`, `go-to-wheel`, and `make install-local`. Use direct Go build instead:
 
 ```bash
-CGO_ENABLED=0 make build && cp dhg ~/.local/bin/dhg
+CGO_ENABLED=0 make build && cp dh ~/.local/bin/dh
 ```
 
 **How to tell:** If you see `Current directory does not exist` from uv/go-to-wheel, or `FileNotFoundError` from Python's `os.getcwd()`, use the fallback build.
 
 Do **not** use `sudo cp`, `make install`, or `go install` directly.
 
-### Running `dhg exec` in the sandbox
+### Running `dh exec` in the sandbox
 
-The sandbox has no Java and no `dhg install`, so the only way to run Deephaven code is via the VM snapshot path. Build the binary first, then use `DHG_HOME` to point at the persisted workspace artifacts.
+The sandbox has no Java and no `dh install`, so the only way to run Deephaven code is via the VM snapshot path. Build the binary first, then use `DH_HOME` to point at the persisted workspace artifacts.
 
 ```bash
 # Build (needed each sandbox session — binary is ephemeral)
-CGO_ENABLED=0 make build && cp dhg ~/.local/bin/dhg
+CGO_ENABLED=0 make build && cp dh ~/.local/bin/dh
 
 # Run code (auto-detects latest snapshot, no --version needed)
-DHG_HOME=/workspace/.dhg dhg exec --vm -c 'print("hello world")'
-DHG_HOME=/workspace/.dhg dhg exec --vm script.py
-echo 'print("hi")' | DHG_HOME=/workspace/.dhg dhg exec --vm -
+DH_HOME=/workspace/.dh dh exec --vm -c 'print("hello world")'
+DH_HOME=/workspace/.dh dh exec --vm script.py
+echo 'print("hi")' | DH_HOME=/workspace/.dh dh exec --vm -
 ```
 
 If no snapshot exists yet, build one first (requires Docker):
 
 ```bash
-DHG_HOME=/workspace/.dhg dhg vm prepare -v    # ~2-5 min, artifacts persist in /workspace/.dhg/
+DH_HOME=/workspace/.dh dh vm prepare -v    # ~2-5 min, artifacts persist in /workspace/.dh/
 ```
 
 ## Go Toolchain Setup

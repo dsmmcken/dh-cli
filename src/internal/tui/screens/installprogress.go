@@ -20,7 +20,7 @@ type installDoneMsg struct {
 }
 
 type InstallProgressScreen struct {
-	dhgHome  string
+	dhHome  string
 	version  string
 	progress progress.Model
 	status   string
@@ -30,10 +30,10 @@ type InstallProgressScreen struct {
 	height   int
 }
 
-func NewInstallProgressScreen(dhgHome, version string) InstallProgressScreen {
+func NewInstallProgressScreen(dhHome, version string) InstallProgressScreen {
 	p := progress.New(progress.WithDefaultGradient())
 	return InstallProgressScreen{
-		dhgHome:  dhgHome,
+		dhHome:  dhHome,
 		version:  version,
 		progress: p,
 		status:   "Starting installation...",
@@ -45,7 +45,7 @@ func (m InstallProgressScreen) Init() tea.Cmd {
 }
 
 func (m InstallProgressScreen) doInstall() tea.Cmd {
-	dhgHome := m.dhgHome
+	dhHome := m.dhHome
 	version := m.version
 	return func() tea.Msg {
 		cfg, err := config.Load()
@@ -66,7 +66,7 @@ func (m InstallProgressScreen) doInstall() tea.Cmd {
 			pythonVer = "3.13"
 		}
 
-		err = versions.Install(dhgHome, version, pythonVer, plugins, nil)
+		err = versions.Install(dhHome, version, pythonVer, plugins, nil)
 		if err != nil {
 			return installDoneMsg{err: err}
 		}

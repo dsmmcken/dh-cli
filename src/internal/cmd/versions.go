@@ -37,14 +37,14 @@ func addVersionCommands(parent *cobra.Command) {
 
 func runVersions(cmd *cobra.Command, args []string) error {
 	config.SetConfigDir(ConfigDir)
-	dhgHome := config.DHGHome()
+	dhHome := config.DHHome()
 
 	cfg, err := config.Load()
 	if err != nil {
 		return err
 	}
 
-	installed, err := versions.ListInstalled(dhgHome)
+	installed, err := versions.ListInstalled(dhHome)
 	if err != nil {
 		return err
 	}
@@ -83,7 +83,7 @@ func runVersions(cmd *cobra.Command, args []string) error {
 	// Human output
 	if len(installed) == 0 {
 		fmt.Fprintln(cmd.OutOrStdout(), "No Deephaven versions installed.")
-		fmt.Fprintln(cmd.OutOrStdout(), "Run 'dhg install' to install the latest version.")
+		fmt.Fprintln(cmd.OutOrStdout(), "Run 'dh install' to install the latest version.")
 	} else {
 		w := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 4, 2, ' ', 0)
 		fmt.Fprintln(w, "VERSION\tDEFAULT\tINSTALLED")

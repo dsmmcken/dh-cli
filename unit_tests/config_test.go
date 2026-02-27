@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func withTempDHGHome(t *testing.T) (string, func()) {
+func withTempDHHome(t *testing.T) (string, func()) {
 	t.Helper()
 	tmp := t.TempDir()
 	config.SetConfigDir(tmp)
@@ -18,7 +18,7 @@ func withTempDHGHome(t *testing.T) (string, func()) {
 }
 
 func TestLoadMissingFileReturnsDefaults(t *testing.T) {
-	_, cleanup := withTempDHGHome(t)
+	_, cleanup := withTempDHHome(t)
 	defer cleanup()
 
 	cfg, err := config.Load()
@@ -29,7 +29,7 @@ func TestLoadMissingFileReturnsDefaults(t *testing.T) {
 }
 
 func TestLoadValidConfig(t *testing.T) {
-	tmp, cleanup := withTempDHGHome(t)
+	tmp, cleanup := withTempDHHome(t)
 	defer cleanup()
 
 	content := `default_version = "42.0"
@@ -48,7 +48,7 @@ python_version = "3.11"
 }
 
 func TestLoadMalformedTOML(t *testing.T) {
-	tmp, cleanup := withTempDHGHome(t)
+	tmp, cleanup := withTempDHHome(t)
 	defer cleanup()
 
 	require.NoError(t, os.WriteFile(filepath.Join(tmp, "config.toml"), []byte("not valid [[ toml"), 0o644))
@@ -59,7 +59,7 @@ func TestLoadMalformedTOML(t *testing.T) {
 }
 
 func TestSetThenGetRoundtrip(t *testing.T) {
-	_, cleanup := withTempDHGHome(t)
+	_, cleanup := withTempDHHome(t)
 	defer cleanup()
 
 	require.NoError(t, config.Set("default_version", "42.0"))
@@ -70,7 +70,7 @@ func TestSetThenGetRoundtrip(t *testing.T) {
 }
 
 func TestGetUnknownKey(t *testing.T) {
-	_, cleanup := withTempDHGHome(t)
+	_, cleanup := withTempDHHome(t)
 	defer cleanup()
 
 	_, err := config.Get("nonexistent_key")
@@ -79,7 +79,7 @@ func TestGetUnknownKey(t *testing.T) {
 }
 
 func TestSetUnknownKey(t *testing.T) {
-	_, cleanup := withTempDHGHome(t)
+	_, cleanup := withTempDHHome(t)
 	defer cleanup()
 
 	err := config.Set("nonexistent_key", "value")
@@ -89,7 +89,7 @@ func TestSetUnknownKey(t *testing.T) {
 
 func TestEnsureDirCreatesDirectory(t *testing.T) {
 	tmp := t.TempDir()
-	newDir := filepath.Join(tmp, "subdir", ".dhg")
+	newDir := filepath.Join(tmp, "subdir", ".dh")
 	config.SetConfigDir(newDir)
 	defer config.SetConfigDir("")
 
@@ -100,67 +100,67 @@ func TestEnsureDirCreatesDirectory(t *testing.T) {
 	assert.True(t, info.IsDir())
 }
 
-func TestDHGRCFindInCwd(t *testing.T) {
+func TestDHRCFindInCwd(t *testing.T) {
 	tmp := t.TempDir()
-	require.NoError(t, os.WriteFile(filepath.Join(tmp, ".dhgrc"), []byte("1.0.0\n"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(tmp, ".dhrc"), []byte("1.0.0\n"), 0o644))
 
-	path, err := config.FindDHGRC(tmp)
+	path, err := config.FindDHRC(tmp)
 	require.NoError(t, err)
-	assert.Equal(t, filepath.Join(tmp, ".dhgrc"), path)
+	assert.Equal(t, filepath.Join(tmp, ".dhrc"), path)
 }
 
-func TestDHGRCFindInParent(t *testing.T) {
+func TestDHRCFindInParent(t *testing.T) {
 	tmp := t.TempDir()
-	require.NoError(t, os.WriteFile(filepath.Join(tmp, ".dhgrc"), []byte("2.0.0\n"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(tmp, ".dhrc"), []byte("2.0.0\n"), 0o644))
 
 	child := filepath.Join(tmp, "subdir")
 	require.NoError(t, os.MkdirAll(child, 0o755))
 
-	path, err := config.FindDHGRC(child)
+	path, err := config.FindDHRC(child)
 	require.NoError(t, err)
-	assert.Equal(t, filepath.Join(tmp, ".dhgrc"), path)
+	assert.Equal(t, filepath.Join(tmp, ".dhrc"), path)
 }
 
-func TestDHGRCNotFound(t *testing.T) {
+func TestDHRCNotFound(t *testing.T) {
 	tmp := t.TempDir()
-	// No .dhgrc file anywhere in tmp
+	// No .dhrc file anywhere in tmp
 
-	path, err := config.FindDHGRC(tmp)
+	path, err := config.FindDHRC(tmp)
 	require.NoError(t, err)
 	assert.Equal(t, "", path)
 }
 
-func TestReadDHGRC(t *testing.T) {
+func TestReadDHRC(t *testing.T) {
 	tmp := t.TempDir()
-	rcPath := filepath.Join(tmp, ".dhgrc")
+	rcPath := filepath.Join(tmp, ".dhrc")
 	require.NoError(t, os.WriteFile(rcPath, []byte("  3.5.0  \n"), 0o644))
 
-	ver, err := config.ReadDHGRC(rcPath)
+	ver, err := config.ReadDHRC(rcPath)
 	require.NoError(t, err)
 	assert.Equal(t, "3.5.0", ver)
 }
 
-func TestReadDHGRCEmpty(t *testing.T) {
+func TestReadDHRCEmpty(t *testing.T) {
 	tmp := t.TempDir()
-	rcPath := filepath.Join(tmp, ".dhgrc")
+	rcPath := filepath.Join(tmp, ".dhrc")
 	require.NoError(t, os.WriteFile(rcPath, []byte("  \n"), 0o644))
 
-	_, err := config.ReadDHGRC(rcPath)
+	_, err := config.ReadDHRC(rcPath)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "empty")
 }
 
-func TestWriteDHGRC(t *testing.T) {
+func TestWriteDHRC(t *testing.T) {
 	tmp := t.TempDir()
-	require.NoError(t, config.WriteDHGRC(tmp, "4.0.0"))
+	require.NoError(t, config.WriteDHRC(tmp, "4.0.0"))
 
-	data, err := os.ReadFile(filepath.Join(tmp, ".dhgrc"))
+	data, err := os.ReadFile(filepath.Join(tmp, ".dhrc"))
 	require.NoError(t, err)
 	assert.Equal(t, "4.0.0\n", string(data))
 }
 
 func TestResolveVersionFlagWins(t *testing.T) {
-	_, cleanup := withTempDHGHome(t)
+	_, cleanup := withTempDHHome(t)
 	defer cleanup()
 
 	ver, err := config.ResolveVersion("1.0.0", "2.0.0")
@@ -169,7 +169,7 @@ func TestResolveVersionFlagWins(t *testing.T) {
 }
 
 func TestResolveVersionEnvWins(t *testing.T) {
-	_, cleanup := withTempDHGHome(t)
+	_, cleanup := withTempDHHome(t)
 	defer cleanup()
 
 	ver, err := config.ResolveVersion("", "2.0.0")
@@ -178,7 +178,7 @@ func TestResolveVersionEnvWins(t *testing.T) {
 }
 
 func TestResolveVersionConfigFallback(t *testing.T) {
-	_, cleanup := withTempDHGHome(t)
+	_, cleanup := withTempDHHome(t)
 	defer cleanup()
 
 	require.NoError(t, config.Set("default_version", "5.0.0"))
@@ -189,7 +189,7 @@ func TestResolveVersionConfigFallback(t *testing.T) {
 }
 
 func TestResolveVersionLatestInstalled(t *testing.T) {
-	tmp, cleanup := withTempDHGHome(t)
+	tmp, cleanup := withTempDHHome(t)
 	defer cleanup()
 
 	// Create some version directories
@@ -203,7 +203,7 @@ func TestResolveVersionLatestInstalled(t *testing.T) {
 }
 
 func TestResolveVersionNothingConfigured(t *testing.T) {
-	_, cleanup := withTempDHGHome(t)
+	_, cleanup := withTempDHHome(t)
 	defer cleanup()
 
 	_, err := config.ResolveVersion("", "")
@@ -212,14 +212,14 @@ func TestResolveVersionNothingConfigured(t *testing.T) {
 }
 
 func TestConfigPath(t *testing.T) {
-	tmp, cleanup := withTempDHGHome(t)
+	tmp, cleanup := withTempDHHome(t)
 	defer cleanup()
 
 	assert.Equal(t, filepath.Join(tmp, "config.toml"), config.ConfigPath())
 }
 
 func TestSetInstallPythonVersion(t *testing.T) {
-	_, cleanup := withTempDHGHome(t)
+	_, cleanup := withTempDHHome(t)
 	defer cleanup()
 
 	require.NoError(t, config.Set("install.python_version", "3.12"))
@@ -229,7 +229,7 @@ func TestSetInstallPythonVersion(t *testing.T) {
 }
 
 func TestSetInstallPlugins(t *testing.T) {
-	_, cleanup := withTempDHGHome(t)
+	_, cleanup := withTempDHHome(t)
 	defer cleanup()
 
 	require.NoError(t, config.Set("install.plugins", "a,b,c"))

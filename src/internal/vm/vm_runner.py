@@ -1,4 +1,4 @@
-"""In-VM runner daemon for dhg exec --vm.
+"""In-VM runner daemon for dh exec --vm.
 
 Runs inside the Firecracker VM. Connects to the local Deephaven server via
 pydeephaven, then listens on a vsock port for JSON execution requests from the host.
