@@ -61,8 +61,14 @@ func runInstall(cmd *cobra.Command, args []string) error {
 	}
 
 	var plugins []string
-	if !installNoPluginsFlag && len(cfg.Install.Plugins) > 0 {
+	if !installNoPluginsFlag {
 		plugins = cfg.Install.Plugins
+		if len(plugins) == 0 {
+			plugins = []string{
+				"deephaven-plugin-ui",
+				"deephaven-plugin-plotly-express",
+			}
+		}
 	}
 
 	pythonVer := installPythonFlag
