@@ -260,12 +260,23 @@ def run_remote(args, code: str):
 
 def _execute_on_server(host: str, port: int, args, code: str, **session_kwargs):
     """Connect to server at host:port, execute code, return exit code."""
+    import time
     from pydeephaven import Session
 
-    try:
-        session = Session(host=host, port=port, **session_kwargs)
-    except Exception as e:
-        _emit_error(args, f"Failed to connect to {host}:{port}: {e}", exit_code=2)
+    session = None
+    last_err = None
+    for attempt in range(10):
+        try:
+            session = Session(host=host, port=port, **session_kwargs)
+            break
+        except Exception as e:
+            last_err = e
+            # Only retry for embedded (localhost) — remote failures are immediate
+            if host != "localhost" or attempt >= 9:
+                break
+            time.sleep(0.3)
+    if session is None:
+        _emit_error(args, f"Failed to connect to {host}:{port}: {last_err}", exit_code=2)
         return 2
 
     try:
@@ -400,13 +411,20 @@ def run_serve(args, code: str):
 
     actual_port = server.port
 
-    # Connect and run script directly (no output capture wrapper)
+    # Connect with retry — gRPC services may not be ready immediately after server.start()
     from pydeephaven import Session
 
-    try:
-        session = Session(host="localhost", port=actual_port)
-    except Exception as e:
-        print(f"Error: Failed to connect to server: {e}", file=sys.stderr)
+    session = None
+    last_err = None
+    for attempt in range(10):
+        try:
+            session = Session(host="localhost", port=actual_port)
+            break
+        except Exception as e:
+            last_err = e
+            time.sleep(0.5)
+    if session is None:
+        print(f"Error: Failed to connect to server: {last_err}", file=sys.stderr)
         return 2
 
     try:
