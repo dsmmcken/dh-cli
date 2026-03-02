@@ -9,6 +9,7 @@ stdout '\-\-jvm-args'
 stdout '\-\-no-browser'
 stdout '\-\-iframe'
 stdout '\-\-version'
+stdout '\-\-vm'
 ! stderr .
 
 # serve appears in root help
@@ -115,6 +116,23 @@ stderr 'finding venv python'
 # No -c flag
 ! exec dh serve -c "print('hello')" test_script.py
 stderr 'unknown.*flag'
+
+# =============================================================================
+# --vm flag validation (no KVM/snapshot needed for these)
+# =============================================================================
+
+# --vm with no script argument
+! exec dh serve --vm
+stderr 'accepts 1 arg'
+
+# --vm with nonexistent script
+! exec dh serve --vm nonexistent.py
+stderr 'reading script file'
+
+# --vm skips Java/venv checks (fails on missing snapshot, not missing Java)
+! exec dh serve --vm test_script.py --version 0.99.0
+! stderr 'finding venv python'
+! stderr 'detecting Java'
 
 # =============================================================================
 # Embedded fixture files

@@ -5,6 +5,8 @@ package vm
 import (
 	"archive/tar"
 	"compress/gzip"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"net/http"
@@ -243,11 +245,18 @@ func findKernelInBuild(buildPrefix, arch string) (string, error) {
 	return bestKey, nil
 }
 
-// EnsureRootfs downloads or retrieves the rootfs quickstart image if no rootfs exists.
+// EnsureRootfs builds the rootfs if it doesn't exist or if embedded sources
+// (vm_runner.py, libworkspace.c) have changed since the last build.
 func EnsureRootfs(paths *VMPaths, version string, stderr io.Writer) error {
 	rootfsPath := paths.RootfsForVersion(version)
+
 	if _, err := os.Stat(rootfsPath); err == nil {
-		return nil
+		// Rootfs exists — check if embedded sources have changed.
+		if !rootfsSourcesChanged(rootfsPath) {
+			return nil
+		}
+		fmt.Fprintf(stderr, "Embedded VM sources changed, rebuilding rootfs...\n")
+		os.Remove(rootfsPath)
 	}
 
 	if err := os.MkdirAll(paths.RootfsDir, 0o755); err != nil {
@@ -260,6 +269,34 @@ func EnsureRootfs(paths *VMPaths, version string, stderr io.Writer) error {
 	}
 
 	return fmt.Errorf("Docker is required to build the VM rootfs. Install Docker and retry")
+}
+
+// rootfsSourcesHash returns a hash of embedded files that are baked into the rootfs.
+// If any of these change, the rootfs must be rebuilt.
+func rootfsSourcesHash() string {
+	h := sha256.New()
+	h.Write([]byte(vmRunnerScript))
+	h.Write([]byte(libworkspaceSource))
+	h.Write([]byte(initScriptTemplate))
+	return hex.EncodeToString(h.Sum(nil))[:16]
+}
+
+// rootfsSourcesChanged checks whether the embedded sources have changed since
+// the rootfs was last built. A hash file is stored alongside the rootfs.
+func rootfsSourcesChanged(rootfsPath string) bool {
+	hashPath := rootfsPath + ".srchash"
+	currentHash := rootfsSourcesHash()
+	stored, err := os.ReadFile(hashPath)
+	if err != nil {
+		return true // no hash file → assume changed
+	}
+	return strings.TrimSpace(string(stored)) != currentHash
+}
+
+// writeRootfsSourcesHash persists the current embedded sources hash.
+func writeRootfsSourcesHash(rootfsPath string) {
+	hashPath := rootfsPath + ".srchash"
+	os.WriteFile(hashPath, []byte(rootfsSourcesHash()), 0o644)
 }
 
 func findDocker() (string, error) {

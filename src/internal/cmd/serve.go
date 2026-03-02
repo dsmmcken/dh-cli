@@ -25,6 +25,7 @@ var (
 	serveNoBrowserFlag bool
 	serveIframeFlag    string
 	serveVersionFlag   string
+	serveVMFlag        bool
 )
 
 func addServeCommand(parent *cobra.Command) {
@@ -44,7 +45,8 @@ Examples:
   dh serve dashboard.py
   dh serve dashboard.py --port 8080
   dh serve dashboard.py --iframe my_widget
-  dh serve dashboard.py --no-browser`,
+  dh serve dashboard.py --no-browser
+  dh serve dashboard.py --vm`,
 		Args: cobra.ExactArgs(1),
 		RunE: runServe,
 	}
@@ -55,11 +57,16 @@ Examples:
 	flags.BoolVar(&serveNoBrowserFlag, "no-browser", false, "Don't open browser automatically")
 	flags.StringVar(&serveIframeFlag, "iframe", "", "Open browser to iframe URL for the given widget name")
 	flags.StringVar(&serveVersionFlag, "version", "", "Deephaven version to use")
+	flags.BoolVar(&serveVMFlag, "vm", false, "Run in a Firecracker microVM (experimental, Linux only)")
 
 	parent.AddCommand(cmd)
 }
 
 func runServe(cmd *cobra.Command, args []string) error {
+	if serveVMFlag {
+		return runServeVM(cmd, args)
+	}
+
 	scriptPath := args[0]
 
 	// Read script file

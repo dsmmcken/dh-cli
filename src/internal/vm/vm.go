@@ -25,6 +25,11 @@ const (
 	// workspace files on demand.
 	FileServerPort = 10001
 
+	// HTTPProxyPort is the vsock port for the HTTP proxy inside the VM.
+	// The host TCP proxy connects to CID=3:HTTPProxyPort to reach the
+	// Deephaven web UI running on localhost:10000 inside the VM.
+	HTTPProxyPort = 10002
+
 	// FirecrackerVersion is the version of Firecracker to download.
 	FirecrackerVersion = "v1.12.0"
 )
@@ -97,8 +102,9 @@ type SnapshotMetadata struct {
 
 // InstanceInfo tracks a running VM instance.
 type InstanceInfo struct {
-	ID        string `json:"id"`
-	PID       int    `json:"pid"`
-	Version   string `json:"version"`
-	VsockPath string `json:"vsock_path"` // Path to the vsock UDS
+	ID            string `json:"id"`
+	PID           int    `json:"pid"`
+	Version       string `json:"version"`
+	VsockPath     string `json:"vsock_path"`      // Per-instance path (host→guest)
+	SnapVsockPath string `json:"snap_vsock_path"` // Original snapshot path (guest→host file server)
 }

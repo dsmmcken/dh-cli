@@ -189,6 +189,7 @@ func buildRootfsDocker(paths *VMPaths, version string, stderr io.Writer) error {
 	exec.Command("docker", "rmi", imageName).Run()
 
 	fmt.Fprintf(stderr, "Rootfs created at %s\n", rootfsPath)
+	writeRootfsSourcesHash(rootfsPath)
 	return nil
 }
 

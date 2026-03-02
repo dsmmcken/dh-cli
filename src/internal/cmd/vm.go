@@ -124,15 +124,9 @@ func runVMPrepare(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	// Step 4: Build rootfs (if not exists)
-	rootfsPath := paths.RootfsForVersion(version)
-	if _, err := os.Stat(rootfsPath); os.IsNotExist(err) {
-		fmt.Fprintf(cmd.ErrOrStderr(), "Building rootfs for version %s (this may take a few minutes)...\n", version)
-		if err := vm.EnsureRootfs(paths, version, cmd.ErrOrStderr()); err != nil {
-			return fmt.Errorf("building rootfs: %w", err)
-		}
-	} else {
-		fmt.Fprintf(cmd.ErrOrStderr(), "Rootfs exists: %s\n", rootfsPath)
+	// Step 4: Ensure rootfs (builds if missing or embedded sources changed)
+	if err := vm.EnsureRootfs(paths, version, cmd.ErrOrStderr()); err != nil {
+		return fmt.Errorf("building rootfs: %w", err)
 	}
 
 	// Step 5: Boot VM and create snapshot

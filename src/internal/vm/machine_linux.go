@@ -481,10 +481,11 @@ func RestoreFromSnapshot(ctx context.Context, cfg *VMConfig, paths *VMPaths, std
 
 	pid, _ := machine.PID()
 	info := &InstanceInfo{
-		ID:        instanceID,
-		PID:       pid,
-		Version:   version,
-		VsockPath: effectiveVsockPath,
+		ID:            instanceID,
+		PID:           pid,
+		Version:       version,
+		VsockPath:     effectiveVsockPath,
+		SnapVsockPath: snapVsockPath,
 	}
 
 	// Write instance info for crash recovery

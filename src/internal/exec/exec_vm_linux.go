@@ -125,10 +125,11 @@ func runVM(cfg *ExecConfig, userCode, version, dhHome string) (int, map[string]a
 	}()
 
 	// Start host file server after VM restore. The guest LD_PRELOAD library
-	// connects to this server to fetch workspace files on demand. We use the
-	// instance's vsock path so pool and non-pool VMs both work correctly.
+	// connects to this server to fetch workspace files on demand. Must use
+	// SnapVsockPath because Firecracker constructs guest→host listener paths
+	// from the path embedded in the snapshot state.
 	cwd, _ := os.Getwd()
-	fileServer, err := vm.StartFileServer(info.VsockPath, cwd)
+	fileServer, err := vm.StartFileServer(info.SnapVsockPath, cwd)
 	if err != nil && cfg.Verbose {
 		fmt.Fprintf(cfg.Stderr, "Warning: file server: %v\n", err)
 	}

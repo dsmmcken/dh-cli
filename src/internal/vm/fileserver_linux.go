@@ -34,6 +34,9 @@ type fileServer struct {
 	listener net.Listener
 	done     chan struct{}
 	wg       sync.WaitGroup
+
+	mu    sync.Mutex
+	conns map[net.Conn]struct{} // active connections, closed on shutdown
 }
 
 // StartFileServer starts a goroutine-based file server that serves files from
@@ -54,6 +57,7 @@ func StartFileServer(vsockPath string, rootDir string) (io.Closer, error) {
 		rootDir:  rootDir,
 		listener: listener,
 		done:     make(chan struct{}),
+		conns:    make(map[net.Conn]struct{}),
 	}
 
 	fs.wg.Add(1)
@@ -65,6 +69,11 @@ func StartFileServer(vsockPath string, rootDir string) (io.Closer, error) {
 func (fs *fileServer) Close() error {
 	close(fs.done)
 	err := fs.listener.Close()
+	fs.mu.Lock()
+	for c := range fs.conns {
+		c.Close()
+	}
+	fs.mu.Unlock()
 	fs.wg.Wait()
 	return err
 }
@@ -94,7 +103,15 @@ func (fs *fileServer) acceptLoop() {
 // before forwarding raw bytes. We handle that first, then process
 // length-prefixed binary messages in a loop.
 func (fs *fileServer) handleConn(conn net.Conn) {
-	defer conn.Close()
+	fs.mu.Lock()
+	fs.conns[conn] = struct{}{}
+	fs.mu.Unlock()
+	defer func() {
+		fs.mu.Lock()
+		delete(fs.conns, conn)
+		fs.mu.Unlock()
+		conn.Close()
+	}()
 
 	// Read and discard the Firecracker vsock handshake line.
 	// The guest kernel sends "CONNECT <port>\n"; Firecracker translates

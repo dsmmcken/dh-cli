@@ -9,10 +9,13 @@ import json
 import os
 import socket
 import sys
+import threading
 import traceback
 
 VMADDR_CID_ANY = 0xFFFFFFFF
 VSOCK_PORT = 10000
+DH_SERVER_PORT = 10000  # Deephaven HTTP server inside the VM
+HTTP_PROXY_PORT = 10002
 
 
 # --- AST helpers ---
@@ -233,6 +236,62 @@ def handle_request(session, request):
     }
 
 
+# --- HTTP proxy (vsock → TCP bridge for web UI) ---
+
+def _bridge(src, dst):
+    """Copy bytes from src to dst until EOF or error."""
+    try:
+        while True:
+            data = src.recv(65536)
+            if not data:
+                break
+            dst.sendall(data)
+    except Exception:
+        pass
+    finally:
+        try:
+            src.close()
+        except Exception:
+            pass
+        try:
+            dst.close()
+        except Exception:
+            pass
+
+
+def _handle_proxy_conn(vsock_conn, dh_port):
+    """Bridge a single vsock connection to the local Deephaven server."""
+    tcp = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        tcp.connect(("127.0.0.1", dh_port))
+    except Exception:
+        vsock_conn.close()
+        return
+    t1 = threading.Thread(target=_bridge, args=(vsock_conn, tcp), daemon=True)
+    t2 = threading.Thread(target=_bridge, args=(tcp, vsock_conn), daemon=True)
+    t1.start()
+    t2.start()
+    # Wait for either direction to finish (connection closed)
+    t1.join()
+    t2.join()
+
+
+def serve_http_proxy(dh_port):
+    """Listen on vsock for HTTP proxy connections and bridge to DH server."""
+    vs = socket.socket(socket.AF_VSOCK, socket.SOCK_STREAM)
+    vs.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    vs.bind((VMADDR_CID_ANY, HTTP_PROXY_PORT))
+    vs.listen(32)
+    while True:
+        try:
+            conn, _ = vs.accept()
+            threading.Thread(
+                target=_handle_proxy_conn, args=(conn, dh_port), daemon=True
+            ).start()
+        except Exception:
+            continue
+
+
 # --- Vsock server ---
 
 def serve_forever(session):
@@ -296,7 +355,11 @@ def main():
         sys.exit(1)
 
     from pydeephaven import Session
-    session = Session(host="localhost", port=10000)
+    session = Session(host="localhost", port=DH_SERVER_PORT)
+
+    # Start HTTP proxy thread (bridges vsock connections to DH web UI).
+    # This runs before snapshot capture so it's already active on restore.
+    threading.Thread(target=serve_http_proxy, args=(DH_SERVER_PORT,), daemon=True).start()
 
     # Signal readiness via marker file
     import pathlib
