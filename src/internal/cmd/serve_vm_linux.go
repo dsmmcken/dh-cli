@@ -49,58 +49,76 @@ func runServeVM(cmd *cobra.Command, args []string) error {
 		fmt.Fprintf(cmd.ErrOrStderr(), "Resolved version: %s\n", version)
 	}
 
-	// Check prerequisites and snapshot in parallel
-	var prereqErrs []*vm.PrereqError
-	var snapErr error
-	var wg sync.WaitGroup
-	wg.Add(2)
-	go func() { defer wg.Done(); prereqErrs = vm.CheckPrerequisites(vmPaths) }()
-	go func() { defer wg.Done(); snapErr = vm.CheckSnapshot(vmPaths, version) }()
-	go vm.CleanupStaleInstances(vmPaths)
-	wg.Wait()
-
-	if len(prereqErrs) > 0 {
-		var msgs []string
-		for _, e := range prereqErrs {
-			msgs = append(msgs, e.Error())
+	// Try pool checkout first (fast path ~20ms vs ~700ms cold restore).
+	var info *vm.InstanceInfo
+	if checkout := tryServePoolCheckout(cmd, version); checkout != nil {
+		version = checkout.Version
+		info = &vm.InstanceInfo{
+			ID:            checkout.InstanceID,
+			PID:           checkout.PID,
+			VsockPath:     checkout.VsockPath,
+			SnapVsockPath: checkout.SnapVsockPath,
 		}
-		fmt.Fprintf(cmd.ErrOrStderr(), "Error: VM prerequisites not met:\n  %s\n", strings.Join(msgs, "\n  "))
-		os.Exit(output.ExitError)
-	}
-	if snapErr != nil {
-		fmt.Fprintf(cmd.ErrOrStderr(), "Error: %v\n", snapErr)
-		os.Exit(output.ExitError)
-	}
+		defer vm.DestroyCheckedOutVM(checkout)
 
-	// Restore VM from snapshot
-	useUffd := os.Getenv("DH_VM_NO_UFFD") != "1"
-	vmCfg := &vm.VMConfig{
-		DHHome:  dhHome,
-		Version: version,
-		Verbose: output.IsVerbose(),
-		UseUffd: useUffd,
-	}
-
-	if !output.IsQuiet() {
-		fmt.Fprintln(cmd.ErrOrStderr(), "Starting Deephaven VM...")
-	}
-
-	start := time.Now()
-	info, machine, uffdCloser, err := vm.RestoreFromSnapshot(cmd.Context(), vmCfg, vmPaths, cmd.ErrOrStderr())
-	if err != nil {
-		fmt.Fprintf(cmd.ErrOrStderr(), "Error: restoring VM: %v\n", err)
-		os.Exit(output.ExitError)
-	}
-	defer func() {
-		vm.DestroyInstance(machine, info, vmPaths)
-		if uffdCloser != nil {
-			uffdCloser.Close()
+		if output.IsVerbose() {
+			fmt.Fprintf(cmd.ErrOrStderr(), "Using pool VM %s (PID %d)\n",
+				checkout.InstanceID, checkout.PID)
 		}
-	}()
+	} else {
+		// Cold restore path — check prerequisites and snapshot in parallel.
+		var prereqErrs []*vm.PrereqError
+		var snapErr error
+		var wg sync.WaitGroup
+		wg.Add(2)
+		go func() { defer wg.Done(); prereqErrs = vm.CheckPrerequisites(vmPaths) }()
+		go func() { defer wg.Done(); snapErr = vm.CheckSnapshot(vmPaths, version) }()
+		go vm.CleanupStaleInstances(vmPaths)
+		wg.Wait()
 
-	if output.IsVerbose() {
-		fmt.Fprintf(cmd.ErrOrStderr(), "VM restored in %dms (instance %s)\n",
-			time.Since(start).Milliseconds(), info.ID)
+		if len(prereqErrs) > 0 {
+			var msgs []string
+			for _, e := range prereqErrs {
+				msgs = append(msgs, e.Error())
+			}
+			fmt.Fprintf(cmd.ErrOrStderr(), "Error: VM prerequisites not met:\n  %s\n", strings.Join(msgs, "\n  "))
+			os.Exit(output.ExitError)
+		}
+		if snapErr != nil {
+			fmt.Fprintf(cmd.ErrOrStderr(), "Error: %v\n", snapErr)
+			os.Exit(output.ExitError)
+		}
+
+		useUffd := os.Getenv("DH_VM_NO_UFFD") != "1"
+		vmCfg := &vm.VMConfig{
+			DHHome:  dhHome,
+			Version: version,
+			Verbose: output.IsVerbose(),
+			UseUffd: useUffd,
+		}
+
+		if !output.IsQuiet() {
+			fmt.Fprintln(cmd.ErrOrStderr(), "Starting Deephaven VM...")
+		}
+
+		start := time.Now()
+		restoreInfo, machine, uffdCloser, restoreErr := vm.RestoreFromSnapshot(cmd.Context(), vmCfg, vmPaths, cmd.ErrOrStderr())
+		if restoreErr != nil {
+			fmt.Fprintf(cmd.ErrOrStderr(), "Error: restoring VM: %v\n", restoreErr)
+			os.Exit(output.ExitError)
+		}
+		info = restoreInfo
+		defer func() {
+			vm.DestroyInstance(machine, info, vmPaths)
+			if uffdCloser != nil {
+				uffdCloser.Close()
+			}
+		}()
+
+		if output.IsVerbose() {
+			fmt.Fprintf(cmd.ErrOrStderr(), "VM restored in %dms (instance %s)\n",
+				time.Since(start).Milliseconds(), info.ID)
+		}
 	}
 
 	// Start host file server for workspace file access.
@@ -186,6 +204,34 @@ func runServeVM(cmd *cobra.Command, args []string) error {
 	fmt.Fprintln(cmd.ErrOrStderr(), "\nShutting down...")
 	// Cleanup happens via defers (proxy, file server, VM destroy)
 	return nil
+}
+
+// tryServePoolCheckout attempts to check out a warm VM from the pool daemon.
+// Returns nil if the pool is unavailable, empty, or version mismatches.
+func tryServePoolCheckout(cmd *cobra.Command, version string) *vm.CheckoutInfo {
+	if os.Getenv("DH_VM_POOL") == "0" {
+		return nil
+	}
+
+	checkout, err := vm.PoolCheckout()
+	if err != nil {
+		if output.IsVerbose() {
+			fmt.Fprintf(cmd.ErrOrStderr(), "Pool checkout: %v, falling back to cold restore\n", err)
+		}
+		return nil
+	}
+
+	// Verify version matches if user requested a specific one.
+	if version != "" && checkout.Version != version {
+		if output.IsVerbose() {
+			fmt.Fprintf(cmd.ErrOrStderr(), "Pool version mismatch (pool=%s, requested=%s), falling back to cold restore\n",
+				checkout.Version, version)
+		}
+		vm.DestroyCheckedOutVM(checkout)
+		return nil
+	}
+
+	return checkout
 }
 
 // listSnapshotVersions returns available complete snapshot versions, newest first.

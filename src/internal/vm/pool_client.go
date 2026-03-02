@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"syscall"
 	"time"
 )
 
@@ -35,6 +36,47 @@ func PoolProbe() bool {
 // PoolExec sends an exec request to the pool daemon and returns the response.
 func PoolExec(req *PoolRequest) (*PoolResponse, error) {
 	return poolRPC(req)
+}
+
+// PoolCheckout requests a warm VM from the pool daemon and transfers ownership
+// to the caller. The caller must clean up via DestroyCheckedOutVM when done.
+func PoolCheckout() (*CheckoutInfo, error) {
+	resp, err := poolRPC(&PoolRequest{Type: "checkout"})
+	if err != nil {
+		return nil, err
+	}
+	if resp.Type == "error" {
+		return nil, fmt.Errorf("pool checkout: %s", resp.Error)
+	}
+	if resp.Checkout == nil {
+		return nil, fmt.Errorf("pool checkout: no checkout info in response")
+	}
+	return resp.Checkout, nil
+}
+
+// DestroyCheckedOutVM cleans up a VM obtained via PoolCheckout. It kills the
+// Firecracker process and removes the instance directory. Safe to call from
+// any process — does not require a *firecracker.Machine handle.
+func DestroyCheckedOutVM(info *CheckoutInfo) {
+	if info == nil {
+		return
+	}
+	if info.PID > 0 {
+		proc, err := os.FindProcess(info.PID)
+		if err == nil {
+			proc.Signal(syscall.SIGKILL)
+			// Poll for process death — can't Wait() since it's not our child.
+			for i := 0; i < 50; i++ {
+				if proc.Signal(syscall.Signal(0)) != nil {
+					break
+				}
+				time.Sleep(10 * time.Millisecond)
+			}
+		}
+	}
+	if info.InstanceDir != "" {
+		os.RemoveAll(info.InstanceDir)
+	}
 }
 
 // PoolCommand sends a control command (status/stop/scale) to the pool daemon.

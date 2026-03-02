@@ -253,6 +253,8 @@ func (p *Pool) handleConnection(ctx context.Context, conn net.Conn) {
 	switch req.Type {
 	case "exec":
 		p.handleExec(ctx, conn, &req)
+	case "checkout":
+		p.handleCheckout(conn)
 	case "status":
 		p.handleStatus(conn)
 	case "scale":
@@ -325,6 +327,46 @@ func (p *Pool) handleExec(ctx context.Context, conn net.Conn, req *PoolRequest) 
 		Type:    "exec_result",
 		Exec:    resp,
 		Version: p.version,
+	})
+}
+
+// handleCheckout dequeues a warm VM and transfers ownership to the caller.
+// The pool closes the UFFD handler (page population completes before the VM
+// enters the ready queue) but does NOT destroy the VM. The caller is
+// responsible for cleanup via DestroyCheckedOutVM.
+func (p *Pool) handleCheckout(conn net.Conn) {
+	p.mu.Lock()
+	p.lastReq = time.Now()
+	p.mu.Unlock()
+
+	var pvm *poolVM
+	select {
+	case pvm = <-p.ready:
+	default:
+		p.sendResponse(conn, &PoolResponse{Type: "error", Error: "no warm VMs available"})
+		return
+	}
+
+	// Close UFFD handler — page population is already complete.
+	if pvm.uffdCloser != nil {
+		pvm.uffdCloser.Close()
+	}
+
+	checkout := &CheckoutInfo{
+		InstanceID:    pvm.instanceID,
+		PID:           pvm.info.PID,
+		VsockPath:     pvm.vsockPath,
+		SnapVsockPath: filepath.Join(p.paths.SnapshotDirForVersion(p.version), "vsock.sock"),
+		InstanceDir:   p.paths.InstanceDir(pvm.instanceID),
+		Version:       p.version,
+	}
+
+	p.log("Checked out VM %s (PID %d) to client", pvm.instanceID, checkout.PID)
+
+	p.sendResponse(conn, &PoolResponse{
+		Type:     "checkout_result",
+		Checkout: checkout,
+		Version:  p.version,
 	})
 }
 
