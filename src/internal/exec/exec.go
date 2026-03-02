@@ -115,29 +115,31 @@ func Run(cfg *ExecConfig) (int, map[string]any, error) {
 	dhHome := config.DHHome()
 	envVersion := os.Getenv("DH_VERSION")
 
-	version, err := config.ResolveVersion(cfg.Version, envVersion)
-	if err != nil && cfg.VMMode {
-		// In VM mode, fall back to the latest available snapshot
-		if v, snapErr := latestSnapshotVersion(dhHome); snapErr == nil {
-			version = v
-			err = nil
+	// VM mode: quick version resolve (flag + env only, no filesystem I/O)
+	// to keep the pool fast path free of disk reads. Full resolution is
+	// deferred to the cold-restore fallback inside runVM.
+	isRemote := cfg.Host != ""
+	if cfg.VMMode {
+		if isRemote {
+			return output.ExitError, nil, fmt.Errorf("cannot use both --vm and --host flags")
 		}
+		version := cfg.Version
+		if version == "" {
+			version = envVersion
+		}
+		if cfg.Verbose && version != "" {
+			fmt.Fprintf(cfg.Stderr, "Resolved version: %s (quick, resolve=%dms)\n", version, time.Since(runStart).Milliseconds())
+		}
+		return runVM(cfg, userCode, version, dhHome)
 	}
+
+	version, err := config.ResolveVersion(cfg.Version, envVersion)
 	if err != nil {
 		return output.ExitError, nil, fmt.Errorf("resolving version: %w", err)
 	}
 
 	if cfg.Verbose {
 		fmt.Fprintf(cfg.Stderr, "Resolved version: %s (resolve=%dms)\n", version, time.Since(runStart).Milliseconds())
-	}
-
-	// VM mode: delegate to Firecracker-based execution
-	isRemote := cfg.Host != ""
-	if cfg.VMMode {
-		if isRemote {
-			return output.ExitError, nil, fmt.Errorf("cannot use both --vm and --host flags")
-		}
-		return runVM(cfg, userCode, version, dhHome)
 	}
 
 	// Find venv python

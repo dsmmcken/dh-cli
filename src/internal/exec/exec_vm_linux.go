@@ -4,6 +4,7 @@ package exec
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -13,24 +14,43 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/dsmmcken/dh-cli/src/internal/config"
 	"github.com/dsmmcken/dh-cli/src/internal/output"
 	"github.com/dsmmcken/dh-cli/src/internal/vm"
 )
 
 // runVM executes code via a Firecracker VM snapshot restore.
 // The VM contains a pre-connected runner daemon, so no host-side Python is needed.
+// version may be empty when called from the fast pool path; full resolution is
+// deferred to the cold-restore fallback below.
 func runVM(cfg *ExecConfig, userCode, version, dhHome string) (int, map[string]any, error) {
 	entryTime := time.Now()
 
 	// Try pool first (fast path ~20ms vs ~700ms cold restore).
 	// Skip pool if DH_VM_POOL=0 is set.
 	if os.Getenv("DH_VM_POOL") != "0" {
-		if exitCode, jsonResult, resp, err := tryPoolExec(cfg, userCode, version, dhHome, entryTime); err == nil {
-			return formatVsockResponse(cfg, resp, version, entryTime, exitCode, jsonResult)
+		if exitCode, jsonResult, resp, poolVersion, err := tryPoolExec(cfg, userCode, version, dhHome, entryTime); err == nil {
+			return formatVsockResponse(cfg, resp, poolVersion, entryTime, exitCode, jsonResult)
 		}
 	}
 
-	// Cold restore path
+	// Cold restore path — full version resolution if we don't have one yet.
+	if version == "" {
+		envVersion := os.Getenv("DH_VERSION")
+		var err error
+		version, err = config.ResolveVersion(cfg.Version, envVersion)
+		if err != nil {
+			if v, snapErr := latestSnapshotVersion(dhHome); snapErr == nil {
+				version = v
+			} else {
+				return output.ExitError, nil, fmt.Errorf("resolving version: %w", err)
+			}
+		}
+		if cfg.Verbose {
+			fmt.Fprintf(cfg.Stderr, "Resolved version: %s (cold path, resolve=%dms)\n", version, time.Since(entryTime).Milliseconds())
+		}
+	}
+
 	vmPaths := vm.NewVMPaths(dhHome)
 
 	// Start page cache warming ASAP — overlaps with prereq checks,
@@ -201,25 +221,11 @@ func runVM(cfg *ExecConfig, userCode, version, dhHome string) (int, map[string]a
 }
 
 // tryPoolExec attempts to execute code via the pool daemon.
-// Returns (exitCode, jsonResult, resp, nil) on success, or (0, nil, nil, err) on failure.
-// On failure, the caller should fall through to cold restore.
-func tryPoolExec(cfg *ExecConfig, userCode, version, dhHome string, entryTime time.Time) (int, map[string]any, *vm.VsockResponse, error) {
-	poolRunning := vm.PoolProbe()
-
-	// Auto-start: if pool is not running, fork a daemon in the background
-	// (fire-and-forget). The first exec pays cold-start cost; subsequent
-	// execs benefit from the warm pool.
-	if !poolRunning {
-		vmPaths := vm.NewVMPaths(dhHome)
-		if vm.CheckSnapshot(vmPaths, version) == nil {
-			if cfg.Verbose {
-				fmt.Fprintf(cfg.Stderr, "Auto-starting pool daemon (first exec uses cold restore)...\n")
-			}
-			autoStartPool(dhHome, version, cfg.Verbose)
-		}
-		return 0, nil, nil, fmt.Errorf("pool not running yet")
-	}
-
+// Returns (exitCode, jsonResult, resp, effectiveVersion, nil) on success,
+// or (0, nil, nil, "", err) on failure. On failure the caller falls through
+// to cold restore. When the input version is empty, the pool's version is
+// accepted; when non-empty, it must match.
+func tryPoolExec(cfg *ExecConfig, userCode, version, dhHome string, entryTime time.Time) (int, map[string]any, *vm.VsockResponse, string, error) {
 	cwd, _ := os.Getwd()
 	poolResp, err := vm.PoolExec(&vm.PoolRequest{
 		Type:          "exec",
@@ -229,36 +235,55 @@ func tryPoolExec(cfg *ExecConfig, userCode, version, dhHome string, entryTime ti
 		ShowTableMeta: cfg.ShowTableMeta,
 	})
 	if err != nil {
-		if cfg.Verbose {
+		// Pool not reachable — auto-start a daemon for next time.
+		if errors.Is(err, vm.ErrPoolNotRunning) {
+			snapVersion := version
+			if snapVersion == "" {
+				if v, snapErr := latestSnapshotVersion(dhHome); snapErr == nil {
+					snapVersion = v
+				}
+			}
+			if snapVersion != "" {
+				vmPaths := vm.NewVMPaths(dhHome)
+				if vm.CheckSnapshot(vmPaths, snapVersion) == nil {
+					if cfg.Verbose {
+						fmt.Fprintf(cfg.Stderr, "Auto-starting pool daemon (first exec uses cold restore)...\n")
+					}
+					autoStartPool(dhHome, snapVersion, cfg.Verbose)
+				}
+			}
+		} else if cfg.Verbose {
 			fmt.Fprintf(cfg.Stderr, "Pool exec failed: %v, falling back to cold restore\n", err)
 		}
-		return 0, nil, nil, err
+		return 0, nil, nil, "", err
 	}
 
 	if poolResp.Type == "error" {
 		if cfg.Verbose {
 			fmt.Fprintf(cfg.Stderr, "Pool error: %s, falling back to cold restore\n", poolResp.Error)
 		}
-		return 0, nil, nil, fmt.Errorf("pool error: %s", poolResp.Error)
+		return 0, nil, nil, "", fmt.Errorf("pool error: %s", poolResp.Error)
 	}
 
-	// Verify version matches
-	if poolResp.Version != version {
+	// Determine effective version: accept pool's version when none was
+	// explicitly requested; otherwise verify the requested version matches.
+	effectiveVersion := poolResp.Version
+	if version != "" && poolResp.Version != version {
 		if cfg.Verbose {
 			fmt.Fprintf(cfg.Stderr, "Pool version mismatch (pool=%s, requested=%s), falling back to cold restore\n",
 				poolResp.Version, version)
 		}
-		return 0, nil, nil, fmt.Errorf("version mismatch")
+		return 0, nil, nil, "", fmt.Errorf("version mismatch")
 	}
 
 	resp := poolResp.Exec
 	if resp == nil {
-		return 0, nil, nil, fmt.Errorf("no exec result from pool")
+		return 0, nil, nil, "", fmt.Errorf("no exec result from pool")
 	}
 
 	elapsed := time.Since(entryTime).Seconds()
 	if cfg.Verbose {
-		fmt.Fprintf(cfg.Stderr, "Pool exec completed in %.0fms\n", elapsed*1000)
+		fmt.Fprintf(cfg.Stderr, "Pool exec completed in %.0fms (version=%s)\n", elapsed*1000, effectiveVersion)
 	}
 
 	if cfg.JSONMode {
@@ -269,7 +294,7 @@ func tryPoolExec(cfg *ExecConfig, userCode, version, dhHome string, entryTime ti
 			"result_repr":     resp.ResultRepr,
 			"error":           resp.Error,
 			"tables":          resp.Tables,
-			"version":         version,
+			"version":         effectiveVersion,
 			"vm_mode":         true,
 			"pool_mode":       true,
 			"elapsed_seconds": elapsed,
@@ -277,10 +302,10 @@ func tryPoolExec(cfg *ExecConfig, userCode, version, dhHome string, entryTime ti
 		if resp.Timing != nil {
 			jsonResult["_timing"] = resp.Timing
 		}
-		return resp.ExitCode, jsonResult, resp, nil
+		return resp.ExitCode, jsonResult, resp, effectiveVersion, nil
 	}
 
-	return resp.ExitCode, nil, resp, nil
+	return resp.ExitCode, nil, resp, effectiveVersion, nil
 }
 
 // autoStartPool forks a pool daemon in the background.

@@ -5,11 +5,15 @@ package vm
 import (
 	"bufio"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
 	"os"
 	"time"
 )
+
+// ErrPoolNotRunning is returned when the pool daemon socket cannot be reached.
+var ErrPoolNotRunning = errors.New("pool daemon not running")
 
 // PoolSocketPath returns the Unix socket path for the pool daemon.
 // Uses the current user's UID to avoid conflicts between users.
@@ -43,7 +47,7 @@ func PoolCommand(req *PoolRequest) (*PoolResponse, error) {
 func poolRPC(req *PoolRequest) (*PoolResponse, error) {
 	conn, err := net.DialTimeout("unix", PoolSocketPath(), 2*time.Second)
 	if err != nil {
-		return nil, fmt.Errorf("connecting to pool daemon: %w", err)
+		return nil, fmt.Errorf("%w: %v", ErrPoolNotRunning, err)
 	}
 	defer conn.Close()
 
