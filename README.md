@@ -16,12 +16,14 @@ This CLI (`dh`) manages the Deephaven environment on your machine: installing ve
 - **Version management** — Install, uninstall, and switch between multiple Deephaven versions
 - **Interactive TUI** — Setup wizard for first-time users, main menu for daily operations
 - **Java detection** — Auto-detect Java from JAVA_HOME, PATH, or managed installs, with one-command install
+- **Interactive REPL** — Multi-line Python REPL with scrollable log view, connected to embedded or remote servers
 - **Server discovery** — Find running Deephaven processes and Docker containers across the system
 - **Environment doctor** — Diagnose and fix common setup problems
 - **Per-directory versions** — Pin a project to a specific Deephaven version with `.dhrc`
 - **JSON output** — Every command supports `--json` for scripting and automation
 - **Cross-platform** — Linux and macOS, with cross-compilation for 6 OS/arch targets
 - **VM execution** — Near-instant Deephaven startup via Firecracker microVM snapshots (Linux)
+- **VM pool** — Pre-warmed VM pool daemon for ultra-low-latency repeated execution (~20ms)
 
 ## Requirements
 
@@ -81,6 +83,7 @@ dh versions                  # List installed versions
 dh doctor                    # Check environment health
 dh list                      # Show running Deephaven servers
 dh exec -c "t = empty_table(5)" # Execute Python code
+dh repl                      # Interactive Python REPL
 dh serve dashboard.py        # Run script and keep server alive
 ```
 
@@ -240,6 +243,31 @@ dh vm prepare                    # Build rootfs + snapshot (~2-5 min, requires D
 dh exec --vm -c "print('ready')" # Verify
 ```
 
+### `dh repl` — Interactive Python REPL
+
+Start an interactive REPL connected to a Deephaven server. Provides a multi-line input area with a scrollable log view showing stdout, stderr, errors, and result values.
+
+In embedded mode (default), starts a local server automatically. In remote mode (`--host`), connects to an existing server.
+
+```bash
+dh repl                                    # Embedded mode
+dh repl --host localhost:10000             # Remote mode
+dh repl --port 8080                        # Custom port
+```
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `--port N` | Server port | `10000` |
+| `--jvm-args ARGS` | JVM arguments (quoted string) | `-Xmx4g` |
+| `--version VERSION` | Deephaven version to use | resolved |
+| `--host HOST` | Remote server host (enables remote mode) | |
+| `--auth-type TYPE` | Authentication type for remote connection | |
+| `--auth-token TOKEN` | Authentication token for remote connection | |
+| `--tls` | Use TLS for remote connection | off |
+| `--tls-ca-cert PATH` | Path to CA certificate for TLS | |
+| `--tls-client-cert PATH` | Path to client certificate for TLS | |
+| `--tls-client-key PATH` | Path to client private key for TLS | |
+
 ### `dh serve` — Run script and keep server alive
 
 Runs a script and keeps the Deephaven server running for dashboards, visualizations, and long-running data pipelines.
@@ -249,6 +277,7 @@ dh serve dashboard.py                    # Run and open browser
 dh serve dashboard.py --port 8080        # Custom port
 dh serve dashboard.py --iframe my_widget # Open browser to iframe URL
 dh serve dashboard.py --no-browser       # Don't open browser
+dh serve dashboard.py --vm               # Run in a Firecracker microVM
 ```
 
 | Option | Description | Default |
@@ -259,8 +288,11 @@ dh serve dashboard.py --no-browser       # Don't open browser
 | `--no-browser` | Don't open browser automatically | off |
 | `--iframe NAME` | Open browser to iframe URL for the given widget name | |
 | `--version VERSION` | Deephaven version to use | resolved |
+| `--vm` | Run in a Firecracker microVM (Linux only) | off |
 
 Opens the browser automatically when the server is ready. Server runs until Ctrl+C (first signal graceful shutdown, second force kill).
+
+When using `--vm`, the serve command runs the script inside a Firecracker microVM restored from snapshot, with the Deephaven web UI proxied to the host port. This requires a prepared snapshot (see `dh vm prepare`) and auto-assigns a free port if the default is busy.
 
 ### `dh vm` — Manage Firecracker microVMs (experimental, Linux only)
 
@@ -299,6 +331,36 @@ dh vm clean --version 0.36.0     # Remove artifacts for specific version
 | Option | Description | Default |
 |--------|-------------|---------|
 | `--version VERSION` | Clean only this version | all versions |
+
+#### `dh vm pool` — Manage pre-warmed VM pool
+
+The pool daemon keeps VMs restored from snapshot and ready to execute code immediately, reducing latency from ~700ms (cold restore) to ~20ms (warm pool checkout).
+
+```bash
+dh vm pool start                         # Start pool daemon (foreground)
+dh vm pool start -n 3                    # Keep 3 warm VMs in the pool
+dh vm pool start --idle-timeout 10m      # Auto-shutdown after 10 min idle
+dh vm pool status                        # Show pool status
+dh vm pool scale 5                       # Adjust pool size at runtime
+dh vm pool stop                          # Stop the pool daemon
+```
+
+| Subcommand | Description |
+|------------|-------------|
+| `start` | Start the pool daemon |
+| `stop` | Stop the pool daemon |
+| `status` | Show pool status (warm/busy VM counts) |
+| `scale N` | Adjust pool size at runtime |
+
+**`start` options**:
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `-n, --size N` | Number of warm VMs to maintain | `1` |
+| `--idle-timeout DURATION` | Auto-shutdown after inactivity | `5m` |
+| `--version VERSION` | Deephaven version | resolved version |
+
+When a pool is running, `dh exec --vm` and `dh serve --vm` automatically check out a warm VM from the pool instead of cold-restoring a snapshot.
 
 ### `dh list` — List running Deephaven servers
 
@@ -492,6 +554,7 @@ src/                         # Main source module
 │   ├── exec/                  # Code execution engine (embedded Python runner)
 │   ├── java/                  # Java detection, version parsing, install
 │   ├── output/                # JSON/text output, exit codes
+│   ├── repl/                  # Interactive REPL (TUI, session management)
 │   ├── tui/                   # Bubbletea TUI app
 │   │   ├── components/        # Reusable TUI components
 │   │   └── screens/           # Individual TUI screens
