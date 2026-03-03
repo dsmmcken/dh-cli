@@ -216,9 +216,9 @@ func runServeVM(cmd *cobra.Command, args []string) error {
 }
 
 // tryServePoolCheckout attempts to check out a warm VM from the pool daemon.
-// Returns nil if the pool is unavailable, empty, or version mismatches.
+// Returns nil if --pool was not passed, or if the pool is unavailable, empty, or version mismatches.
 func tryServePoolCheckout(cmd *cobra.Command, version string) *vm.CheckoutInfo {
-	if os.Getenv("DH_VM_POOL") == "0" {
+	if !servePoolFlag {
 		return nil
 	}
 

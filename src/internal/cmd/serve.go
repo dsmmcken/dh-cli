@@ -26,6 +26,7 @@ var (
 	serveIframeFlag    string
 	serveVersionFlag   string
 	serveVMFlag        bool
+	servePoolFlag      bool
 )
 
 func addServeCommand(parent *cobra.Command) {
@@ -58,6 +59,7 @@ Examples:
 	flags.StringVar(&serveIframeFlag, "iframe", "", "Open browser to iframe URL for the given widget name")
 	flags.StringVar(&serveVersionFlag, "version", "", "Deephaven version to use")
 	flags.BoolVar(&serveVMFlag, "vm", false, "Run in a Firecracker microVM (experimental, Linux only)")
+	flags.BoolVar(&servePoolFlag, "pool", false, "Use a warm VM from the pool daemon (requires --vm)")
 
 	parent.AddCommand(cmd)
 }
