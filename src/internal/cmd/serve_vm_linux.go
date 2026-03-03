@@ -5,6 +5,7 @@ package cmd
 import (
 	"fmt"
 	"io"
+	"net"
 	"os"
 	"os/signal"
 	"strings"
@@ -134,18 +135,26 @@ func runServeVM(cmd *cobra.Command, args []string) error {
 		defer fileServer.Close()
 	}
 
-	// Start TCP→vsock HTTP proxy (host→guest direction uses the per-instance path)
+	// Start TCP→vsock HTTP proxy (host→guest direction uses the per-instance path).
+	// If the requested port is busy, fall back to an OS-assigned port.
 	listenAddr := fmt.Sprintf("127.0.0.1:%d", servePortFlag)
 	var proxyStderr io.Writer
 	if output.IsVerbose() {
 		proxyStderr = cmd.ErrOrStderr()
 	}
 	proxy, err := vm.StartHTTPProxy(listenAddr, info.VsockPath, proxyStderr)
+	if err != nil && servePortFlag != 0 {
+		if !output.IsQuiet() {
+			fmt.Fprintf(cmd.ErrOrStderr(), "Port %d is in use, finding available port...\n", servePortFlag)
+		}
+		proxy, err = vm.StartHTTPProxy("127.0.0.1:0", info.VsockPath, proxyStderr)
+	}
 	if err != nil {
-		fmt.Fprintf(cmd.ErrOrStderr(), "Error: starting HTTP proxy on %s: %v\n", listenAddr, err)
+		fmt.Fprintf(cmd.ErrOrStderr(), "Error: starting HTTP proxy: %v\n", err)
 		os.Exit(output.ExitError)
 	}
 	defer proxy.Close()
+	actualPort := proxy.Addr().(*net.TCPAddr).Port
 
 	// Execute user script via vsock
 	req := &vm.VsockRequest{
@@ -183,7 +192,7 @@ func runServeVM(cmd *cobra.Command, args []string) error {
 	}
 
 	// Construct URL and open browser
-	url := fmt.Sprintf("http://localhost:%d", servePortFlag)
+	url := fmt.Sprintf("http://localhost:%d", actualPort)
 	if serveIframeFlag != "" {
 		url = fmt.Sprintf("%s/iframe/widget/?name=%s", url, serveIframeFlag)
 	}
