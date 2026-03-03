@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"syscall"
+	"time"
 )
 
 // CleanupStaleInstances scans the run directory for orphaned instances
@@ -20,6 +21,13 @@ func CleanupStaleInstances(paths *VMPaths) {
 
 	for _, e := range entries {
 		if !e.IsDir() {
+			continue
+		}
+
+		// Skip recently-created directories — they may be mid-restore
+		// (instance.json is written after Firecracker starts, so there's
+		// a window where a valid in-progress directory has no JSON yet).
+		if fi, err := e.Info(); err == nil && time.Since(fi.ModTime()) < 60*time.Second {
 			continue
 		}
 
