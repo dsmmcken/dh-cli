@@ -87,7 +87,7 @@ exec dh exec -c "print('hello')"
 stdout 'ARG:--mode'
 stdout 'ARG:embedded'
 stdout 'ARG:--port'
-stdout 'ARG:10000'
+stdout 'ARG:0'
 stdout 'ARG:--jvm-args=-Xmx4g'
 stdout 'ARG:--show-tables'
 stdout 'ARG:--show-table-meta'

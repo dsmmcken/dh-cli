@@ -501,7 +501,7 @@ def _emit_error(args, message: str, exit_code: int):
 def main():
     parser = argparse.ArgumentParser(description="dh exec/serve runner")
     parser.add_argument("--mode", choices=["embedded", "remote", "serve"], required=True)
-    parser.add_argument("--port", type=int, default=10000)
+    parser.add_argument("--port", type=int, default=0)
     parser.add_argument("--host", default="localhost")
     parser.add_argument("--jvm-args", default="-Xmx4g")
     parser.add_argument("--show-tables", action="store_true")

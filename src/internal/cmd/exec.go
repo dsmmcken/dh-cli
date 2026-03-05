@@ -48,7 +48,7 @@ Examples:
 
 	flags := cmd.Flags()
 	flags.StringVarP(&execCodeFlag, "code", "c", "", "Python code to execute")
-	flags.IntVar(&execPortFlag, "port", 10000, "Server port")
+	flags.IntVar(&execPortFlag, "port", 0, "Server port (0 = auto-assign)")
 	flags.StringVar(&execJVMArgsFlag, "jvm-args", "-Xmx4g -DAuthHandlers=io.deephaven.auth.AnonymousAuthenticationHandler", "JVM arguments (quoted string)")
 	flags.IntVar(&execTimeoutFlag, "timeout", 0, "Execution timeout in seconds (0 = no timeout)")
 	flags.BoolVar(&execNoShowTablesFlag, "no-show-tables", false, "Do not show table previews")

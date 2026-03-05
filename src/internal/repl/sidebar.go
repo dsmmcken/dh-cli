@@ -104,9 +104,8 @@ func (m SidebarModel) View() string {
 
 	style := lipgloss.NewStyle().
 		Width(m.width - 2).
-		Height(m.height).
-		BorderStyle(lipgloss.NormalBorder()).
-		BorderLeft(true).
+		Height(m.height - 2).
+		Border(lipgloss.RoundedBorder()).
 		BorderForeground(tui.ColorDim).
 		PaddingLeft(1).
 		PaddingRight(1)

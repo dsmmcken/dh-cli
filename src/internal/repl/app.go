@@ -2,12 +2,15 @@ package repl
 
 import (
 	"fmt"
+	"io"
+	"path/filepath"
 	"sort"
+	"strings"
 
-	"github.com/charmbracelet/bubbles/textarea"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/dsmmcken/dh-cli/src/internal/tui"
+	"github.com/knz/bubbline/editline"
 )
 
 // SessionStartedMsg is sent when the Python session is ready.
@@ -36,7 +39,6 @@ type REPLModel struct {
 	logview    LogViewModel
 	tableviews map[string]*TableViewModel
 	sidebar    SidebarModel
-	history    *History
 
 	session         *Session
 	cfg             SessionConfig
@@ -51,14 +53,13 @@ type REPLModel struct {
 
 // NewREPLModel creates a new REPL model with the given session config.
 func NewREPLModel(cfg SessionConfig) REPLModel {
-	history := NewHistory(cfg.DHHome)
+	historyPath := filepath.Join(cfg.DHHome, "repl_history")
 	return REPLModel{
-		input:      NewInput(history),
+		input:      NewInput(historyPath),
 		tabbar:     NewTabBar(),
 		logview:    NewLogView(),
 		tableviews: make(map[string]*TableViewModel),
 		sidebar:    NewSidebar(),
-		history:    history,
 		cfg:        cfg,
 		activeView: "log",
 	}
@@ -71,7 +72,7 @@ func (m REPLModel) Init() tea.Cmd {
 		Text: "Starting Deephaven...",
 	})
 	return tea.Batch(
-		textarea.Blink,
+		m.input.editor.Focus(),
 		m.startSession(),
 	)
 }
@@ -97,23 +98,22 @@ func (m REPLModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case tea.KeyMsg:
-		// Let search modes handle ctrl+c themselves (to cancel search, not quit)
-		if m.input.mode != InputNormal && msg.String() == "ctrl+c" {
+		// Let tab search handle ctrl+c itself (to cancel search, not quit).
+		if m.input.IsTabSearching() && msg.String() == "ctrl+c" {
 			var cmd tea.Cmd
 			m.input, cmd = m.input.Update(msg)
 			return m, cmd
 		}
 
-		switch msg.String() {
-		case "ctrl+c", "ctrl+d":
-			if m.session != nil {
-				m.session.Close()
-			}
-			return m, tea.Quit
-		}
-
-		// While executing, allow scrolling in the active content area
+		// While executing, allow scrolling in the active content area.
 		if m.executing {
+			switch msg.String() {
+			case "ctrl+c", "ctrl+d":
+				if m.session != nil {
+					m.session.Close()
+				}
+				return m, tea.Quit
+			}
 			if m.activeView == "log" {
 				var cmd tea.Cmd
 				m.logview, cmd = m.logview.Update(msg)
@@ -125,6 +125,39 @@ func (m REPLModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 		}
+
+	case editline.InputCompleteMsg:
+		// Bubbline signals input is complete.
+		editorErr := m.input.editor.Err
+		if editorErr != nil {
+			// Ctrl+D (io.EOF) or Ctrl+C on empty (ErrInterrupted) → quit.
+			if editorErr == io.EOF || editorErr == editline.ErrInterrupted {
+				if m.session != nil {
+					m.session.Close()
+				}
+				return m, tea.Quit
+			}
+		}
+
+		code := strings.TrimSpace(m.input.Value())
+		if code == "" {
+			m.input.Reset()
+			return m, nil
+		}
+
+		if m.session == nil || m.executing {
+			return m, nil
+		}
+
+		m.executing = true
+		m.input.SetExecuting(true)
+		m.input.editor.AddHistoryEntry(code)
+		m.input.SaveHistory()
+		m.input.Reset()
+
+		m.logview.AppendEntry(LogEntry{Type: LogCommand, Text: code})
+
+		return m, m.executeCode(code)
 
 	case SessionStartedMsg:
 		if msg.Err != nil {
@@ -154,21 +187,6 @@ func (m REPLModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			TableCount: 0,
 		})
 		return m, m.listenForPush()
-
-	case SubmitMsg:
-		if m.session == nil || m.executing {
-			return m, nil
-		}
-		code := msg.Code
-		m.executing = true
-		m.input.SetExecuting(true)
-		m.input.Reset()
-
-		m.history.Add(code)
-
-		m.logview.AppendEntry(LogEntry{Type: LogCommand, Text: code})
-
-		return m, m.executeCode(code)
 
 	case ExecuteResultMsg:
 		m.executing = false
@@ -268,7 +286,7 @@ func (m REPLModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		if m.width > 0 && m.height > 0 {
 			contentHeight := m.contentHeight()
-			tv.SetSize(m.mainWidth(), contentHeight)
+			tv.SetSize(m.mainWidth()-2, contentHeight)
 		}
 
 		if m.activeView == msg.Name {
@@ -446,9 +464,10 @@ func (m REPLModel) mainWidth() int {
 
 func (m REPLModel) contentHeight() int {
 	inputRenderedHeight := m.input.Height()
-	tabBarHeight := 1
+	tabBarHeight := 3  // 1 line + 2 for tab box borders
+	contentBorder := 2 // top + bottom border on content area
 
-	h := m.height - inputRenderedHeight - tabBarHeight
+	h := m.height - inputRenderedHeight - tabBarHeight - contentBorder
 	if h < 1 {
 		h = 1
 	}
@@ -458,14 +477,15 @@ func (m REPLModel) contentHeight() int {
 func (m *REPLModel) layout() {
 	mainWidth := m.mainWidth()
 	contentHeight := m.contentHeight()
+	contentInnerWidth := mainWidth - 2 // -2 for content area border
 
 	m.input.SetWidth(mainWidth)
 	m.tabbar.SetWidth(mainWidth)
-	m.logview.SetSize(mainWidth, contentHeight)
+	m.logview.SetSize(contentInnerWidth, contentHeight)
 	m.sidebar.SetHeight(m.height)
 
 	for _, tv := range m.tableviews {
-		tv.SetSize(mainWidth, contentHeight)
+		tv.SetSize(contentInnerWidth, contentHeight)
 	}
 }
 
@@ -485,10 +505,16 @@ func (m REPLModel) View() string {
 		contentView = tui.StyleDim.Render("  Loading table...")
 	}
 
+	contentBoxStyle := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(tui.ColorDim).
+		Width(m.mainWidth() - 2).
+		Height(m.contentHeight())
+
 	mainSections := []string{
 		m.input.View(),
 		m.tabbar.View(),
-		contentView,
+		contentBoxStyle.Render(contentView),
 	}
 
 	mainArea := lipgloss.JoinVertical(lipgloss.Left, mainSections...)

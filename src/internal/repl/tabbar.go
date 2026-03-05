@@ -126,7 +126,7 @@ func (m TabBarModel) Update(msg tea.Msg) (TabBarModel, tea.Cmd) {
 	return m, nil
 }
 
-// View renders the tab bar as a horizontal row of styled labels with overflow truncation.
+// View renders the tab bar as a horizontal row of bordered tab boxes with overflow truncation.
 func (m TabBarModel) View() string {
 	if m.width == 0 || len(m.tabs) == 0 {
 		return ""
@@ -141,41 +141,53 @@ func (m TabBarModel) View() string {
 			label = fmt.Sprintf("%s (%d)", t.Name, t.RowCount)
 		}
 
-		renderedWidth := lipgloss.Width(label) + 2
+		// Box: border(2) + padding(2) + label
+		fullLabel := label
 		if t.Type == TabTable && t.IsRefreshing {
-			renderedWidth += 5 // " LIVE" badge
+			fullLabel += " LIVE"
 		}
+		renderedWidth := lipgloss.Width(fullLabel) + 4
 
 		// Check overflow: reserve space for "+N" if not last tab
 		if usedWidth+renderedWidth > m.width && i > 0 {
 			remaining := len(m.tabs) - i
-			truncStyle := lipgloss.NewStyle().Foreground(tui.ColorDim).Padding(0, 1)
-			tabs = append(tabs, truncStyle.Render(fmt.Sprintf("+%d", remaining)))
+			moreBox := lipgloss.NewStyle().
+				Border(lipgloss.RoundedBorder()).
+				BorderForeground(tui.ColorDim).
+				Padding(0, 1)
+			tabs = append(tabs, moreBox.Render(
+				lipgloss.NewStyle().Foreground(tui.ColorDim).Render(fmt.Sprintf("+%d", remaining)),
+			))
 			break
 		}
 
 		usedWidth += renderedWidth
 
-		var tabRendered string
+		var borderColor lipgloss.TerminalColor
+		var labelStyle lipgloss.Style
 		if i == m.activeIdx {
-			style := lipgloss.NewStyle().
+			borderColor = tui.ColorPrimary
+			labelStyle = lipgloss.NewStyle().
 				Bold(true).
 				Foreground(lipgloss.Color("#FFFFFF")).
-				Background(tui.ColorPrimary).
-				Padding(0, 1)
-			tabRendered = style.Render(label)
+				Background(tui.ColorPrimary)
 		} else {
-			style := lipgloss.NewStyle().
-				Foreground(tui.ColorDim).
-				Padding(0, 1)
-			tabRendered = style.Render(label)
+			borderColor = tui.ColorDim
+			labelStyle = lipgloss.NewStyle().
+				Foreground(tui.ColorDim)
 		}
 
+		tabContent := labelStyle.Render(label)
 		if t.Type == TabTable && t.IsRefreshing {
 			badge := lipgloss.NewStyle().Foreground(lipgloss.Color("#00FF00")).Bold(true).Render(" LIVE")
-			tabRendered = tabRendered + badge
+			tabContent += badge
 		}
-		tabs = append(tabs, tabRendered)
+
+		boxStyle := lipgloss.NewStyle().
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(borderColor).
+			Padding(0, 1)
+		tabs = append(tabs, boxStyle.Render(tabContent))
 	}
 
 	return lipgloss.JoinHorizontal(lipgloss.Top, tabs...)
