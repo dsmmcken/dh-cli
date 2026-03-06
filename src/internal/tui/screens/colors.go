@@ -1,11 +1,14 @@
 package screens
 
-import "github.com/charmbracelet/lipgloss"
+import (
+	"charm.land/lipgloss/v2"
+	"charm.land/lipgloss/v2/compat"
+)
 
 var (
-	colorPrimary = lipgloss.AdaptiveColor{Light: "#2F71F2", Dark: "#4A90FF"}
-	colorDim     = lipgloss.AdaptiveColor{Light: "#999999", Dark: "#666666"}
-	colorSuccess = lipgloss.AdaptiveColor{Light: "#04B575", Dark: "#04B575"}
-	colorWarning = lipgloss.AdaptiveColor{Light: "#FFA500", Dark: "#FFA500"}
-	colorError   = lipgloss.AdaptiveColor{Light: "#FF4672", Dark: "#FF4672"}
+	colorPrimary = compat.AdaptiveColor{Light: lipgloss.Color("#2F71F2"), Dark: lipgloss.Color("#4A90FF")}
+	colorDim     = compat.AdaptiveColor{Light: lipgloss.Color("#999999"), Dark: lipgloss.Color("#666666")}
+	colorSuccess = compat.AdaptiveColor{Light: lipgloss.Color("#04B575"), Dark: lipgloss.Color("#04B575")}
+	colorWarning = compat.AdaptiveColor{Light: lipgloss.Color("#FFA500"), Dark: lipgloss.Color("#FFA500")}
+	colorError   = compat.AdaptiveColor{Light: lipgloss.Color("#FF4672"), Dark: lipgloss.Color("#FF4672")}
 )

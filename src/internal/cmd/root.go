@@ -5,7 +5,7 @@ import (
 	"os"
 	"time"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 	"github.com/dsmmcken/dh-cli/src/internal/config"
 	"github.com/dsmmcken/dh-cli/src/internal/output"
 	"github.com/dsmmcken/dh-cli/src/internal/tui"
@@ -78,7 +78,7 @@ func newRootCmd() *cobra.Command {
 				mode = tui.MenuMode
 			}
 
-			p := tea.NewProgram(tui.NewApp(mode, dhHome), tea.WithAltScreen())
+			p := tea.NewProgram(tui.NewApp(mode, dhHome))
 			_, err := p.Run()
 			return err
 		},

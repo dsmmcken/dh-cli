@@ -7,12 +7,12 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/charmbracelet/bubbles/key"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/bubbles/v2/key"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/dsmmcken/dh-cli/src/internal/tui"
-	"github.com/knz/bubbline/editline"
-	"github.com/knz/bubbline/history"
+	"github.com/dsmmcken/dh-cli/src/internal/repl/editline"
+	"github.com/dsmmcken/dh-cli/src/internal/repl/rhistory"
 )
 
 // TabSearchMsg is emitted when the user selects a tab via Ctrl+T.
@@ -85,7 +85,7 @@ func NewInput(historyPath string) InputModel {
 // format and the bubbline libedit format.
 func loadHistory(ed *editline.Model, path string) {
 	// Try bubbline's native format first.
-	h, err := history.LoadHistory(path)
+	h, err := rhistory.LoadHistory(path)
 	if err == nil && len(h) > 0 {
 		ed.SetHistory(h)
 		return
@@ -120,7 +120,7 @@ func (m *InputModel) SaveHistory() {
 	}
 	dir := filepath.Dir(m.historyPath)
 	os.MkdirAll(dir, 0o755)
-	history.SaveHistory(m.editor.GetHistory(), m.historyPath)
+	rhistory.SaveHistory(m.editor.GetHistory(), m.historyPath)
 }
 
 // SetWidth updates the editor width, accounting for the box border.
@@ -169,7 +169,7 @@ func (m InputModel) Height() int {
 // Update handles key input, intercepting tab search before delegating to editline.
 func (m InputModel) Update(msg tea.Msg) (InputModel, tea.Cmd) {
 	switch msg := msg.(type) {
-	case tea.KeyMsg:
+	case tea.KeyPressMsg:
 		if m.mode == InputTabSearch {
 			return m.updateTabSearch(msg)
 		}
@@ -192,7 +192,7 @@ func (m InputModel) Update(msg tea.Msg) (InputModel, tea.Cmd) {
 	return m, cmd
 }
 
-func (m InputModel) updateTabSearch(msg tea.KeyMsg) (InputModel, tea.Cmd) {
+func (m InputModel) updateTabSearch(msg tea.KeyPressMsg) (InputModel, tea.Cmd) {
 	switch msg.String() {
 	case "enter":
 		if len(m.searchMatches) > 0 && m.searchIdx < len(m.searchMatches) {

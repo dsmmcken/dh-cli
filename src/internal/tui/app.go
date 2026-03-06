@@ -1,7 +1,7 @@
 package tui
 
 import (
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 	"github.com/dsmmcken/dh-cli/src/internal/tui/screens"
 )
 
@@ -69,7 +69,7 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.stack = a.stack[:len(a.stack)-1]
 		return a, nil
 
-	case tea.KeyMsg:
+	case tea.KeyPressMsg:
 		// At root screen, ctrl+c always quits
 		if len(a.stack) == 1 {
 			switch msg.String() {
@@ -90,11 +90,13 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return a, nil
 }
 
-func (a App) View() string {
+func (a App) View() tea.View {
+	var v tea.View
 	if len(a.stack) > 0 {
-		return a.stack[len(a.stack)-1].View()
+		v = a.stack[len(a.stack)-1].View()
 	}
-	return ""
+	v.AltScreen = true
+	return v
 }
 
 // StackLen returns the number of screens on the stack (for testing).

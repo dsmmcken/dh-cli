@@ -3,9 +3,9 @@ package screens
 import (
 	"strings"
 
-	"github.com/charmbracelet/bubbles/key"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/bubbles/v2/key"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/dsmmcken/dh-cli/src/internal/tui/components"
 )
 
@@ -53,7 +53,7 @@ func (m WelcomeScreen) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width = msg.Width
 		m.height = msg.Height
 		return m, nil
-	case tea.KeyMsg:
+	case tea.KeyPressMsg:
 		switch {
 		case key.Matches(msg, m.keys.Enter):
 			return m, pushScreen(NewJavaCheckScreen("", true))
@@ -64,7 +64,7 @@ func (m WelcomeScreen) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m WelcomeScreen) View() string {
+func (m WelcomeScreen) View() tea.View {
 	var b strings.Builder
 
 	logo := lipgloss.NewStyle().
@@ -84,5 +84,5 @@ func (m WelcomeScreen) View() string {
 
 	b.WriteString(lipgloss.NewStyle().Foreground(colorDim).Render("  enter continue • q quit"))
 
-	return b.String()
+	return tea.NewView(b.String())
 }

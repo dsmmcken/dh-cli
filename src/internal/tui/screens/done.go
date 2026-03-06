@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/charmbracelet/bubbles/key"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/bubbles/v2/key"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 )
 
 type DoneScreen struct {
@@ -29,7 +29,7 @@ func (m DoneScreen) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width = msg.Width
 		m.height = msg.Height
 		return m, nil
-	case tea.KeyMsg:
+	case tea.KeyPressMsg:
 		switch {
 		case key.Matches(msg, key.NewBinding(key.WithKeys("enter", "q", "ctrl+c"))):
 			return m, tea.Quit
@@ -38,7 +38,7 @@ func (m DoneScreen) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m DoneScreen) View() string {
+func (m DoneScreen) View() tea.View {
 	var b strings.Builder
 
 	b.WriteString("  ✓ Setup Complete\n\n")
@@ -53,5 +53,5 @@ func (m DoneScreen) View() string {
 	b.WriteString("\n\n")
 	b.WriteString(lipgloss.NewStyle().Foreground(colorDim).Render("  enter finish • q quit"))
 
-	return b.String()
+	return tea.NewView(b.String())
 }

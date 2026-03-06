@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/charmbracelet/bubbles/progress"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/bubbles/v2/progress"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/dsmmcken/dh-cli/src/internal/config"
 	"github.com/dsmmcken/dh-cli/src/internal/versions"
 )
@@ -31,7 +31,7 @@ type InstallProgressScreen struct {
 }
 
 func NewInstallProgressScreen(dhHome, version string) InstallProgressScreen {
-	p := progress.New(progress.WithDefaultGradient())
+	p := progress.New()
 	return InstallProgressScreen{
 		dhHome:  dhHome,
 		version:  version,
@@ -83,10 +83,11 @@ func (m InstallProgressScreen) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
-		m.progress.Width = msg.Width - 10
-		if m.progress.Width < 20 {
-			m.progress.Width = 20
+		w := msg.Width - 10
+		if w < 20 {
+			w = 20
 		}
+		m.progress.SetWidth(w)
 		return m, nil
 
 	case installProgressMsg:
@@ -102,11 +103,11 @@ func (m InstallProgressScreen) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case progress.FrameMsg:
-		progressModel, cmd := m.progress.Update(msg)
-		m.progress = progressModel.(progress.Model)
+		var cmd tea.Cmd
+		m.progress, cmd = m.progress.Update(msg)
 		return m, cmd
 
-	case tea.KeyMsg:
+	case tea.KeyPressMsg:
 		if m.done && m.err != nil {
 			switch msg.String() {
 			case "q", "ctrl+c", "enter", "esc":
@@ -120,7 +121,7 @@ func (m InstallProgressScreen) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m InstallProgressScreen) View() string {
+func (m InstallProgressScreen) View() tea.View {
 	var b strings.Builder
 
 	b.WriteString("  Step 3 of 3 — Installing\n\n")
@@ -130,12 +131,12 @@ func (m InstallProgressScreen) View() string {
 			b.WriteString(fmt.Sprintf("  Error: %s\n\n", m.err))
 			b.WriteString(lipgloss.NewStyle().Foreground(colorDim).Render("  Press any key to exit"))
 		}
-		return b.String()
+		return tea.NewView(b.String())
 	}
 
 	b.WriteString(fmt.Sprintf("  Installing Deephaven %s...\n\n", m.version))
 	b.WriteString("  " + m.progress.ViewAs(0.5) + "\n\n")
 	b.WriteString(fmt.Sprintf("  %s\n", m.status))
 
-	return b.String()
+	return tea.NewView(b.String())
 }

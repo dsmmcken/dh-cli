@@ -3,9 +3,9 @@ package repl
 import (
 	"strings"
 
-	"github.com/charmbracelet/bubbles/viewport"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/bubbles/v2/viewport"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/dsmmcken/dh-cli/src/internal/tui"
 )
 
@@ -48,12 +48,14 @@ func (m *LogViewModel) SetSize(width, height int) {
 	m.width = width
 	m.height = height
 	if !m.ready {
-		m.viewport = viewport.New(width, height)
-		m.viewport.YPosition = 0
+		m.viewport = viewport.New()
+		m.viewport.SetWidth(width)
+		m.viewport.SetHeight(height)
+		m.viewport.SetYOffset(0)
 		m.ready = true
 	} else {
-		m.viewport.Width = width
-		m.viewport.Height = height
+		m.viewport.SetWidth(width)
+		m.viewport.SetHeight(height)
 	}
 	m.renderContent()
 }

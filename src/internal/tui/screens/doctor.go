@@ -4,10 +4,10 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/charmbracelet/bubbles/key"
-	"github.com/charmbracelet/bubbles/spinner"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/bubbles/v2/key"
+	"charm.land/bubbles/v2/spinner"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/dsmmcken/dh-cli/src/internal/config"
 	"github.com/dsmmcken/dh-cli/src/internal/java"
 	"github.com/dsmmcken/dh-cli/src/internal/versions"
@@ -147,7 +147,7 @@ func (m DoctorScreen) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
-	case tea.KeyMsg:
+	case tea.KeyPressMsg:
 		switch {
 		case key.Matches(msg, m.keys.Refresh):
 			m.loading = true
@@ -161,14 +161,14 @@ func (m DoctorScreen) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m DoctorScreen) View() string {
+func (m DoctorScreen) View() tea.View {
 	var b strings.Builder
 
 	b.WriteString("  Environment Health\n\n")
 
 	if m.loading {
 		b.WriteString(fmt.Sprintf("  Running checks...  %s\n", m.spinner.View()))
-		return b.String()
+		return tea.NewView(b.String())
 	}
 
 	var warnings, errors int
@@ -200,5 +200,5 @@ func (m DoctorScreen) View() string {
 	b.WriteString("\n")
 	b.WriteString(lipgloss.NewStyle().Foreground(colorDim).Render("  r refresh • esc back • q quit"))
 
-	return b.String()
+	return tea.NewView(b.String())
 }

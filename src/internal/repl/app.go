@@ -7,10 +7,10 @@ import (
 	"sort"
 	"strings"
 
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/dsmmcken/dh-cli/src/internal/tui"
-	"github.com/knz/bubbline/editline"
+	"github.com/dsmmcken/dh-cli/src/internal/repl/editline"
 )
 
 // SessionStartedMsg is sent when the Python session is ready.
@@ -97,7 +97,7 @@ func (m REPLModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.layout()
 		return m, nil
 
-	case tea.KeyMsg:
+	case tea.KeyPressMsg:
 		// Let tab search handle ctrl+c itself (to cancel search, not quit).
 		if m.input.IsTabSearching() && msg.String() == "ctrl+c" {
 			var cmd tea.Cmd
@@ -490,37 +490,44 @@ func (m *REPLModel) layout() {
 }
 
 // View renders the REPL layout with sidebar.
-func (m REPLModel) View() string {
+func (m REPLModel) View() tea.View {
+	var content string
 	if m.err != nil && m.session == nil {
-		return fmt.Sprintf("\n  %s\n\n  Press Ctrl+C to exit.\n",
+		content = fmt.Sprintf("\n  %s\n\n  Press Ctrl+C to exit.\n",
 			tui.StyleError.Render(fmt.Sprintf("Error: %v", m.err)))
-	}
-
-	var contentView string
-	if m.activeView == "log" {
-		contentView = m.logview.View()
-	} else if tv, ok := m.tableviews[m.activeView]; ok {
-		contentView = tv.View()
 	} else {
-		contentView = tui.StyleDim.Render("  Loading table...")
+		var contentView string
+		if m.activeView == "log" {
+			contentView = m.logview.View()
+		} else if tv, ok := m.tableviews[m.activeView]; ok {
+			contentView = tv.View()
+		} else {
+			contentView = tui.StyleDim.Render("  Loading table...")
+		}
+
+		contentBoxStyle := lipgloss.NewStyle().
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(tui.ColorDim).
+			Width(m.mainWidth() - 2).
+			Height(m.contentHeight())
+
+		mainSections := []string{
+			m.input.View(),
+			m.tabbar.View(),
+			contentBoxStyle.Render(contentView),
+		}
+
+		mainArea := lipgloss.JoinVertical(lipgloss.Left, mainSections...)
+
+		if m.width >= 60 {
+			content = lipgloss.JoinHorizontal(lipgloss.Top, mainArea, m.sidebar.View())
+		} else {
+			content = mainArea
+		}
 	}
 
-	contentBoxStyle := lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(tui.ColorDim).
-		Width(m.mainWidth() - 2).
-		Height(m.contentHeight())
-
-	mainSections := []string{
-		m.input.View(),
-		m.tabbar.View(),
-		contentBoxStyle.Render(contentView),
-	}
-
-	mainArea := lipgloss.JoinVertical(lipgloss.Left, mainSections...)
-
-	if m.width >= 60 {
-		return lipgloss.JoinHorizontal(lipgloss.Top, mainArea, m.sidebar.View())
-	}
-	return mainArea
+	v := tea.NewView(content)
+	v.AltScreen = true
+	v.MouseMode = tea.MouseModeCellMotion
+	return v
 }

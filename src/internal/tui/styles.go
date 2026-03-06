@@ -1,13 +1,16 @@
 package tui
 
-import "github.com/charmbracelet/lipgloss"
+import (
+	"charm.land/lipgloss/v2"
+	"charm.land/lipgloss/v2/compat"
+)
 
 var (
-	ColorPrimary = lipgloss.AdaptiveColor{Light: "#2F71F2", Dark: "#4A90FF"}
-	ColorSuccess = lipgloss.AdaptiveColor{Light: "#04B575", Dark: "#04B575"}
-	ColorWarning = lipgloss.AdaptiveColor{Light: "#FFA500", Dark: "#FFA500"}
-	ColorError   = lipgloss.AdaptiveColor{Light: "#FF4672", Dark: "#FF4672"}
-	ColorDim     = lipgloss.AdaptiveColor{Light: "#999999", Dark: "#666666"}
+	ColorPrimary = compat.AdaptiveColor{Light: lipgloss.Color("#2F71F2"), Dark: lipgloss.Color("#4A90FF")}
+	ColorSuccess = compat.AdaptiveColor{Light: lipgloss.Color("#04B575"), Dark: lipgloss.Color("#04B575")}
+	ColorWarning = compat.AdaptiveColor{Light: lipgloss.Color("#FFA500"), Dark: lipgloss.Color("#FFA500")}
+	ColorError   = compat.AdaptiveColor{Light: lipgloss.Color("#FF4672"), Dark: lipgloss.Color("#FF4672")}
+	ColorDim     = compat.AdaptiveColor{Light: lipgloss.Color("#999999"), Dark: lipgloss.Color("#666666")}
 
 	StyleLogo = lipgloss.NewStyle().Foreground(ColorPrimary)
 

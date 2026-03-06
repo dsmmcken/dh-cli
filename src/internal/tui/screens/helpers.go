@@ -1,6 +1,6 @@
 package screens
 
-import tea "github.com/charmbracelet/bubbletea"
+import tea "charm.land/bubbletea/v2"
 
 // PushScreenMsg tells the app to push a new screen onto the stack.
 type PushScreenMsg struct {

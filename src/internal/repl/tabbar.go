@@ -2,9 +2,10 @@ package repl
 
 import (
 	"fmt"
+	"image/color"
 
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/dsmmcken/dh-cli/src/internal/tui"
 )
 
@@ -113,7 +114,7 @@ func (m TabBarModel) TabCount() int {
 // Update handles tab navigation keys.
 func (m TabBarModel) Update(msg tea.Msg) (TabBarModel, tea.Cmd) {
 	switch msg := msg.(type) {
-	case tea.KeyMsg:
+	case tea.KeyPressMsg:
 		switch msg.String() {
 		case "tab":
 			m.activeIdx = (m.activeIdx + 1) % len(m.tabs)
@@ -163,7 +164,7 @@ func (m TabBarModel) View() string {
 
 		usedWidth += renderedWidth
 
-		var borderColor lipgloss.TerminalColor
+		var borderColor color.Color
 		var labelStyle lipgloss.Style
 		if i == m.activeIdx {
 			borderColor = tui.ColorPrimary

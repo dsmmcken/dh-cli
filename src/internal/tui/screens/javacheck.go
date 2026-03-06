@@ -4,10 +4,10 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/charmbracelet/bubbles/key"
-	"github.com/charmbracelet/bubbles/spinner"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/bubbles/v2/key"
+	"charm.land/bubbles/v2/spinner"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/dsmmcken/dh-cli/src/internal/config"
 	"github.com/dsmmcken/dh-cli/src/internal/java"
 )
@@ -116,7 +116,7 @@ func (m JavaCheckScreen) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
-	case tea.KeyMsg:
+	case tea.KeyPressMsg:
 		if m.checking {
 			if key.Matches(msg, m.keys.Quit) {
 				return m, tea.Quit
@@ -171,7 +171,7 @@ func (m JavaCheckScreen) handleSelect() tea.Cmd {
 	return nil
 }
 
-func (m JavaCheckScreen) View() string {
+func (m JavaCheckScreen) View() tea.View {
 	var b strings.Builder
 
 	if m.wizard {
@@ -182,12 +182,12 @@ func (m JavaCheckScreen) View() string {
 
 	if m.checking {
 		b.WriteString(fmt.Sprintf("  Checking for Java 17+...  %s\n", m.spinner.View()))
-		return b.String()
+		return tea.NewView(b.String())
 	}
 
 	if m.err != nil {
 		b.WriteString(fmt.Sprintf("  Error: %s\n", m.err))
-		return b.String()
+		return tea.NewView(b.String())
 	}
 
 	if m.result != nil && m.result.Found {
@@ -220,5 +220,5 @@ func (m JavaCheckScreen) View() string {
 	helpParts = append(helpParts, "q quit")
 	b.WriteString(lipgloss.NewStyle().Foreground(colorDim).Render("  " + strings.Join(helpParts, " • ")))
 
-	return b.String()
+	return tea.NewView(b.String())
 }

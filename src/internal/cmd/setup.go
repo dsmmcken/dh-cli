@@ -8,7 +8,7 @@ import (
 	"github.com/dsmmcken/dh-cli/src/internal/versions"
 	"github.com/spf13/cobra"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 )
 
 var nonInteractiveFlag bool
@@ -36,7 +36,7 @@ func runSetup(cmd *cobra.Command, args []string) error {
 	}
 
 	// Interactive mode: launch wizard TUI
-	p := tea.NewProgram(tui.NewApp(tui.WizardMode, dhHome), tea.WithAltScreen())
+	p := tea.NewProgram(tui.NewApp(tui.WizardMode, dhHome))
 	_, err := p.Run()
 	return err
 }

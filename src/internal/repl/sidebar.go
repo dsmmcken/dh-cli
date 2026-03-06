@@ -4,10 +4,10 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/charmbracelet/bubbles/help"
-	"github.com/charmbracelet/bubbles/key"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/bubbles/v2/help"
+	"charm.land/bubbles/v2/key"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/dsmmcken/dh-cli/src/internal/tui"
 )
 
@@ -42,7 +42,7 @@ func (k replKeyMap) FullHelp() [][]key.Binding {
 
 var defaultREPLKeyMap = replKeyMap{
 	Submit:     key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "submit")),
-	Newline:    key.NewBinding(key.WithKeys("shift+enter"), key.WithHelp("shift+ret", "newline")),
+	Newline:    key.NewBinding(key.WithKeys("shift+enter", "ctrl+o"), key.WithHelp("s+ret/^o", "newline")),
 	History:    key.NewBinding(key.WithKeys("up", "down"), key.WithHelp("↑/↓", "history")),
 	SearchHist: key.NewBinding(key.WithKeys("ctrl+r"), key.WithHelp("ctrl+r", "search hist")),
 	SearchTabs: key.NewBinding(key.WithKeys("ctrl+t"), key.WithHelp("ctrl+t", "search tabs")),
@@ -139,7 +139,7 @@ func (m SidebarModel) renderServerInfo() string {
 
 func (m SidebarModel) renderHelp() string {
 	titleStyle := lipgloss.NewStyle().Bold(true).Foreground(tui.ColorPrimary)
-	m.help.Width = m.width - 4 // account for border + padding
+	m.help.SetWidth(m.width - 4) // account for border + padding
 
 	lines := []string{
 		titleStyle.Render("Keys"),

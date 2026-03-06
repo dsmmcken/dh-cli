@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 	"github.com/dsmmcken/dh-cli/src/internal/config"
 	dhexec "github.com/dsmmcken/dh-cli/src/internal/exec"
 	"github.com/dsmmcken/dh-cli/src/internal/java"
@@ -113,7 +113,7 @@ func runRepl(cmd *cobra.Command, args []string) error {
 
 	// Create and run the TUI
 	model := repl.NewREPLModel(cfg)
-	p := tea.NewProgram(model, tea.WithAltScreen(), tea.WithMouseCellMotion())
+	p := tea.NewProgram(model)
 	_, err = p.Run()
 	return err
 }

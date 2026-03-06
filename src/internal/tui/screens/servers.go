@@ -8,10 +8,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/charmbracelet/bubbles/help"
-	"github.com/charmbracelet/bubbles/key"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/bubbles/v2/help"
+	"charm.land/bubbles/v2/key"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/dsmmcken/dh-cli/src/internal/discovery"
 )
 
@@ -109,7 +109,7 @@ func (m ServersScreen) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
-		m.help.Width = msg.Width
+		m.help.SetWidth(msg.Width)
 		return m, nil
 
 	case ServersLoadedMsg:
@@ -125,7 +125,7 @@ func (m ServersScreen) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case ServersPollTickMsg:
 		return m, tea.Batch(discoverServers(), pollServersTick())
 
-	case tea.KeyMsg:
+	case tea.KeyPressMsg:
 		if m.loading {
 			if key.Matches(msg, m.keys.Quit) {
 				return m, tea.Quit
@@ -171,21 +171,21 @@ func (m ServersScreen) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m ServersScreen) View() string {
+func (m ServersScreen) View() tea.View {
 	var b strings.Builder
 
 	b.WriteString("  Running Deephaven Servers\n\n")
 
 	if m.loading {
 		b.WriteString("  Discovering...\n")
-		return b.String()
+		return tea.NewView(b.String())
 	}
 
 	if m.err != nil {
 		b.WriteString(fmt.Sprintf("  Error: %s\n", m.err))
 		b.WriteString("\n")
 		b.WriteString(m.help.View(m.keys))
-		return b.String()
+		return tea.NewView(b.String())
 	}
 
 	if len(m.servers) == 0 {
@@ -223,7 +223,7 @@ func (m ServersScreen) View() string {
 	b.WriteString("\n")
 	b.WriteString(m.help.View(m.keys))
 
-	return b.String()
+	return tea.NewView(b.String())
 }
 
 // OpenBrowser opens the given URL in the default browser, with WSL support.

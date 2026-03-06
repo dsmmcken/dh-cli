@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/charmbracelet/bubbles/key"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/bubbles/v2/key"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/dsmmcken/dh-cli/src/internal/config"
 )
 
@@ -72,7 +72,7 @@ func (m ConfigScreen) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.err = msg.err
 		return m, nil
 
-	case tea.KeyMsg:
+	case tea.KeyPressMsg:
 		switch {
 		case key.Matches(msg, m.keys.Back):
 			return m, popScreen()
@@ -83,19 +83,19 @@ func (m ConfigScreen) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m ConfigScreen) View() string {
+func (m ConfigScreen) View() tea.View {
 	var b strings.Builder
 
 	b.WriteString("  Configuration\n\n")
 
 	if m.loading {
 		b.WriteString("  Loading...\n")
-		return b.String()
+		return tea.NewView(b.String())
 	}
 
 	if m.err != nil {
 		b.WriteString(fmt.Sprintf("  Error: %s\n", m.err))
-		return b.String()
+		return tea.NewView(b.String())
 	}
 
 	b.WriteString(fmt.Sprintf("  Config file: %s\n\n", lipgloss.NewStyle().Foreground(colorDim).Render(m.cfgPath)))
@@ -115,7 +115,7 @@ func (m ConfigScreen) View() string {
 	b.WriteString("\n\n")
 	b.WriteString(lipgloss.NewStyle().Foreground(colorDim).Render("  esc back • q quit"))
 
-	return b.String()
+	return tea.NewView(b.String())
 }
 
 func valueOrNone(s string) string {

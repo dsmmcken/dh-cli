@@ -4,10 +4,10 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/charmbracelet/bubbles/help"
-	"github.com/charmbracelet/bubbles/key"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/bubbles/v2/help"
+	"charm.land/bubbles/v2/key"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/dsmmcken/dh-cli/src/internal/config"
 	"github.com/dsmmcken/dh-cli/src/internal/versions"
 )
@@ -163,7 +163,7 @@ func (m VersionsScreen) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
-		m.help.Width = msg.Width
+		m.help.SetWidth(msg.Width)
 		return m, nil
 
 	case VersionsListLoadedMsg:
@@ -173,7 +173,7 @@ func (m VersionsScreen) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.err = msg.Err
 		return m, nil
 
-	case tea.KeyMsg:
+	case tea.KeyPressMsg:
 		if m.loading {
 			if key.Matches(msg, m.keys.Quit) {
 				return m, tea.Quit
@@ -232,19 +232,19 @@ func (m VersionsScreen) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m VersionsScreen) View() string {
+func (m VersionsScreen) View() tea.View {
 	var b strings.Builder
 
 	b.WriteString("  Versions\n\n")
 
 	if m.loading {
 		b.WriteString("  Loading...\n")
-		return b.String()
+		return tea.NewView(b.String())
 	}
 
 	if m.err != nil {
 		b.WriteString(fmt.Sprintf("  Error: %s\n", m.err))
-		return b.String()
+		return tea.NewView(b.String())
 	}
 
 	if len(m.entries) == 0 {
@@ -290,5 +290,5 @@ func (m VersionsScreen) View() string {
 	b.WriteString("\n")
 	b.WriteString(m.help.View(m.keys))
 
-	return b.String()
+	return tea.NewView(b.String())
 }
