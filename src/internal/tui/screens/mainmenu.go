@@ -4,10 +4,10 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/charmbracelet/bubbles/help"
-	"github.com/charmbracelet/bubbles/key"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/bubbles/v2/help"
+	"charm.land/bubbles/v2/key"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/dsmmcken/dh-cli/src/internal/config"
 	"github.com/dsmmcken/dh-cli/src/internal/tui/components"
 )
@@ -78,6 +78,7 @@ func NewMainMenu(dhHome string) MainMenu {
 		{title: "Java status", desc: "Check or install Java runtime"},
 		{title: "Environment doctor", desc: "Diagnose and fix setup issues"},
 		{title: "Configuration", desc: "View and edit settings"},
+		{title: "VM management", desc: "Manage VM snapshots, prerequisites, and pool daemon"},
 	}
 
 	// Build status line
@@ -115,10 +116,10 @@ func (m MainMenu) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
-		m.help.Width = msg.Width
+		m.help.SetWidth(msg.Width)
 		return m, nil
 
-	case tea.KeyMsg:
+	case tea.KeyPressMsg:
 		switch {
 		case key.Matches(msg, m.keys.Up):
 			m.cursor--
@@ -153,11 +154,13 @@ func (m MainMenu) selectItem() tea.Cmd {
 		return pushScreen(NewDoctorScreen(m.dhHome))
 	case 4:
 		return pushScreen(NewConfigScreen(m.dhHome))
+	case 5:
+		return pushScreen(NewVMManageScreen(m.dhHome))
 	}
 	return nil
 }
 
-func (m MainMenu) View() string {
+func (m MainMenu) View() tea.View {
 	var b strings.Builder
 
 	showLogo := m.height >= 20
@@ -196,7 +199,7 @@ func (m MainMenu) View() string {
 	// Help bar
 	b.WriteString(m.help.View(m.keys))
 
-	return b.String()
+	return tea.NewView(b.String())
 }
 
 // Cursor returns the current cursor position (for testing).

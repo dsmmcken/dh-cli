@@ -5,11 +5,13 @@ import (
 	"testing"
 	"time"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 	"github.com/dsmmcken/dh-cli/src/internal/discovery"
+	"github.com/dsmmcken/dh-cli/src/internal/repl"
 	"github.com/dsmmcken/dh-cli/src/internal/tui"
 	"github.com/dsmmcken/dh-cli/src/internal/tui/screens"
 	"github.com/dsmmcken/dh-cli/src/internal/versions"
+	"github.com/dsmmcken/dh-cli/src/internal/vm"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -17,12 +19,12 @@ import (
 func TestMainMenu_InitialCursor(t *testing.T) {
 	m := screens.NewMainMenu(t.TempDir())
 	assert.Equal(t, 0, m.Cursor())
-	assert.Equal(t, 5, m.ItemCount())
+	assert.Equal(t, 6, m.ItemCount())
 }
 
 func TestMainMenu_CursorMovesDown(t *testing.T) {
 	m := screens.NewMainMenu(t.TempDir())
-	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("j")})
+	updated, _ := m.Update(tea.KeyPressMsg{Text: "j"})
 	menu := updated.(screens.MainMenu)
 	assert.Equal(t, 1, menu.Cursor())
 }
@@ -30,19 +32,19 @@ func TestMainMenu_CursorMovesDown(t *testing.T) {
 func TestMainMenu_CursorMovesUp(t *testing.T) {
 	m := screens.NewMainMenu(t.TempDir())
 	// Move down first
-	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("j")})
+	updated, _ := m.Update(tea.KeyPressMsg{Text: "j"})
 	// Then up
-	updated, _ = updated.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("k")})
+	updated, _ = updated.Update(tea.KeyPressMsg{Text: "k"})
 	menu := updated.(screens.MainMenu)
 	assert.Equal(t, 0, menu.Cursor())
 }
 
 func TestMainMenu_CursorWrapsDown(t *testing.T) {
 	m := screens.NewMainMenu(t.TempDir())
-	// Move down 5 times (past last item)
+	// Move down 6 times (past last item, wraps to 0)
 	var model tea.Model = m
-	for i := 0; i < 5; i++ {
-		model, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("j")})
+	for i := 0; i < 6; i++ {
+		model, _ = model.Update(tea.KeyPressMsg{Text: "j"})
 	}
 	menu := model.(screens.MainMenu)
 	assert.Equal(t, 0, menu.Cursor())
@@ -51,28 +53,29 @@ func TestMainMenu_CursorWrapsDown(t *testing.T) {
 func TestMainMenu_CursorWrapsUp(t *testing.T) {
 	m := screens.NewMainMenu(t.TempDir())
 	// Move up from position 0 should wrap to last
-	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("k")})
+	updated, _ := m.Update(tea.KeyPressMsg{Text: "k"})
 	menu := updated.(screens.MainMenu)
-	assert.Equal(t, 4, menu.Cursor())
+	assert.Equal(t, 5, menu.Cursor())
 }
 
 func TestMainMenu_ViewContainsItems(t *testing.T) {
 	m := screens.NewMainMenu(t.TempDir())
 	// Set a size first
 	updated, _ := m.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
-	view := updated.View()
+	view := updated.View().Content
 	assert.Contains(t, view, "Manage versions")
 	assert.Contains(t, view, "Running servers")
 	assert.Contains(t, view, "Java status")
 	assert.Contains(t, view, "Environment doctor")
 	assert.Contains(t, view, "Configuration")
+	assert.Contains(t, view, "VM management")
 }
 
 func TestMainMenu_ViewHidesLogoWhenShort(t *testing.T) {
 	m := screens.NewMainMenu(t.TempDir())
 	// Set height < 20
 	updated, _ := m.Update(tea.WindowSizeMsg{Width: 80, Height: 15})
-	view := updated.View()
+	view := updated.View().Content
 	assert.NotContains(t, view, "____")
 	assert.Contains(t, view, "Manage versions")
 }
@@ -80,14 +83,14 @@ func TestMainMenu_ViewHidesLogoWhenShort(t *testing.T) {
 func TestMainMenu_ViewShowsDescWhenTall(t *testing.T) {
 	m := screens.NewMainMenu(t.TempDir())
 	updated, _ := m.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
-	view := updated.View()
+	view := updated.View().Content
 	assert.Contains(t, view, "Install, remove, and switch between Deephaven versions")
 }
 
 func TestMainMenu_ViewHidesDescWhenShort(t *testing.T) {
 	m := screens.NewMainMenu(t.TempDir())
 	updated, _ := m.Update(tea.WindowSizeMsg{Width: 80, Height: 12})
-	view := updated.View()
+	view := updated.View().Content
 	assert.NotContains(t, view, "Install, remove, and switch between Deephaven versions")
 }
 
@@ -117,7 +120,7 @@ func TestApp_PopAtRootQuits(t *testing.T) {
 
 func TestWelcomeScreen_ViewContents(t *testing.T) {
 	m := screens.NewWelcomeScreen()
-	view := m.View()
+	view := m.View().Content
 	assert.Contains(t, view, "Welcome")
 	assert.Contains(t, view, "Get Started")
 	assert.Contains(t, view, "Java")
@@ -192,19 +195,19 @@ func TestMergeVersions_InstalledNotInRemote(t *testing.T) {
 
 func TestVersionsScreen_ViewShowsLoading(t *testing.T) {
 	m := screens.NewVersionsScreen(t.TempDir())
-	view := m.View()
+	view := m.View().Content
 	assert.Contains(t, view, "Loading...")
 }
 
 func TestVersionsScreen_ViewShowsTitle(t *testing.T) {
 	m := screens.NewVersionsScreen(t.TempDir())
-	view := m.View()
+	view := m.View().Content
 	assert.Contains(t, view, "Versions")
 }
 
 func TestVersionsScreen_NoRemovedKeyBindings(t *testing.T) {
 	m := screens.NewVersionsScreen(t.TempDir())
-	view := m.View()
+	view := m.View().Content
 	assert.NotContains(t, view, "toggle remote")
 	assert.NotContains(t, view, "add new")
 }
@@ -215,8 +218,8 @@ func TestVersionsScreen_HasExpectedKeyBindings(t *testing.T) {
 	}
 	m := versionsScreenWithEntries(entries, "")
 	// Trigger full help to see all bindings
-	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("?")})
-	view := updated.View()
+	updated, _ := m.Update(tea.KeyPressMsg{Text: "?"})
+	view := updated.View().Content
 	assert.Contains(t, view, "set default")
 	assert.Contains(t, view, "install")
 	assert.Contains(t, view, "uninstall")
@@ -239,7 +242,7 @@ func TestVersionsScreen_EnterOnInstalledSetsDefault(t *testing.T) {
 	m := versionsScreenWithEntries(entries, "41.0")
 
 	// Cursor is on 41.1 (index 0), press enter
-	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	updated, cmd := m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	vs := updated.(screens.VersionsScreen)
 
 	// Should set default locally (no push screen)
@@ -255,7 +258,7 @@ func TestVersionsScreen_EnterOnNotInstalledPushesInstall(t *testing.T) {
 	m := versionsScreenWithEntries(entries, "")
 
 	// Press enter on uninstalled version
-	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	_, cmd := m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	// Should produce a PushScreenMsg (install)
 	assert.NotNil(t, cmd)
 }
@@ -266,7 +269,7 @@ func TestVersionsScreen_IOnNotInstalledPushesInstall(t *testing.T) {
 	}
 	m := versionsScreenWithEntries(entries, "")
 
-	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("i")})
+	_, cmd := m.Update(tea.KeyPressMsg{Text: "i"})
 	assert.NotNil(t, cmd)
 }
 
@@ -276,7 +279,7 @@ func TestVersionsScreen_IOnInstalledDoesNothing(t *testing.T) {
 	}
 	m := versionsScreenWithEntries(entries, "")
 
-	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("i")})
+	_, cmd := m.Update(tea.KeyPressMsg{Text: "i"})
 	assert.Nil(t, cmd)
 }
 
@@ -296,7 +299,7 @@ func TestVersionsScreen_UOnInstalledUninstalls(t *testing.T) {
 	vs := updated.(screens.VersionsScreen)
 
 	// Press u to uninstall
-	updated, cmd := vs.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("u")})
+	updated, cmd := vs.Update(tea.KeyPressMsg{Text: "u"})
 	vs = updated.(screens.VersionsScreen)
 
 	assert.Nil(t, cmd)
@@ -311,7 +314,7 @@ func TestVersionsScreen_UOnNotInstalledDoesNothing(t *testing.T) {
 	}
 	m := versionsScreenWithEntries(entries, "")
 
-	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("u")})
+	updated, cmd := m.Update(tea.KeyPressMsg{Text: "u"})
 	vs := updated.(screens.VersionsScreen)
 
 	assert.Nil(t, cmd)
@@ -329,19 +332,19 @@ func serversScreenWithServers(servers []discovery.Server) screens.ServersScreen 
 
 func TestServersScreen_ViewShowsDiscovering(t *testing.T) {
 	m := screens.NewServersScreen()
-	view := m.View()
+	view := m.View().Content
 	assert.Contains(t, view, "Discovering...")
 }
 
 func TestServersScreen_ViewShowsTitle(t *testing.T) {
 	m := screens.NewServersScreen()
-	view := m.View()
+	view := m.View().Content
 	assert.Contains(t, view, "Running Deephaven Servers")
 }
 
 func TestServersScreen_ViewShowsNoServers(t *testing.T) {
 	m := serversScreenWithServers(nil)
-	view := m.View()
+	view := m.View().Content
 	assert.Contains(t, view, "No servers found")
 }
 
@@ -351,7 +354,7 @@ func TestServersScreen_ViewShowsServerList(t *testing.T) {
 		{Port: 8080, PID: 5678, Source: "dh serve"},
 	}
 	m := serversScreenWithServers(servers)
-	view := m.View()
+	view := m.View().Content
 	assert.Contains(t, view, ":10000")
 	assert.Contains(t, view, ":8080")
 	assert.Contains(t, view, "dh serve")
@@ -359,8 +362,8 @@ func TestServersScreen_ViewShowsServerList(t *testing.T) {
 
 func TestServersScreen_HasExpectedKeyBindings(t *testing.T) {
 	m := serversScreenWithServers(nil)
-	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("?")})
-	view := updated.View()
+	updated, _ := m.Update(tea.KeyPressMsg{Text: "?"})
+	view := updated.View().Content
 	assert.Contains(t, view, "kill")
 	assert.Contains(t, view, "open browser")
 }
@@ -376,21 +379,21 @@ func TestServersScreen_OpenSetsStatus(t *testing.T) {
 	}
 	m := serversScreenWithServers(servers)
 
-	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("o")})
+	updated, _ := m.Update(tea.KeyPressMsg{Text: "o"})
 	ss := updated.(screens.ServersScreen)
 	assert.Contains(t, ss.Status(), "Opened http://localhost:10000")
 }
 
 func TestServersScreen_OpenOnEmptyDoesNothing(t *testing.T) {
 	m := serversScreenWithServers(nil)
-	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("o")})
+	updated, _ := m.Update(tea.KeyPressMsg{Text: "o"})
 	ss := updated.(screens.ServersScreen)
 	assert.Equal(t, "", ss.Status())
 }
 
 func TestServersScreen_KillOnEmptyDoesNothing(t *testing.T) {
 	m := serversScreenWithServers(nil)
-	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("x")})
+	updated, cmd := m.Update(tea.KeyPressMsg{Text: "x"})
 	ss := updated.(screens.ServersScreen)
 	assert.Nil(t, cmd)
 	assert.Equal(t, "", ss.Status())
@@ -401,4 +404,200 @@ func TestServersScreen_PollTickTriggersRefresh(t *testing.T) {
 	_, cmd := m.Update(screens.ServersPollTickMsg{})
 	// Poll tick should produce commands (refresh + next tick)
 	assert.NotNil(t, cmd)
+}
+
+// --- REPL input tests ---
+
+func TestInput_ShiftEnterInsertsNewline(t *testing.T) {
+	input := repl.NewInput(t.TempDir() + "/history")
+	input.SetWidth(80)
+
+	// Type some text first.
+	input, _ = input.Update(tea.KeyPressMsg{Text: "a"})
+	assert.Equal(t, "a", input.Value())
+
+	// Shift+enter should insert a newline, not submit.
+	shiftEnter := tea.KeyPressMsg{Code: tea.KeyEnter, Mod: tea.ModShift}
+	input, cmd := input.Update(shiftEnter)
+	assert.Contains(t, input.Value(), "\n", "shift+enter should insert a newline")
+	// No InputCompleteMsg should be produced (i.e., input should not be submitted).
+	assert.Nil(t, cmd, "shift+enter should not produce a command (no submit)")
+}
+
+func TestInput_CtrlOInsertsNewline(t *testing.T) {
+	input := repl.NewInput(t.TempDir() + "/history")
+	input.SetWidth(80)
+
+	// Type some text first.
+	input, _ = input.Update(tea.KeyPressMsg{Text: "x"})
+
+	// Ctrl+o is the fallback for newline insertion.
+	ctrlO := tea.KeyPressMsg{Code: 'o', Mod: tea.ModCtrl}
+	input, cmd := input.Update(ctrlO)
+	assert.Contains(t, input.Value(), "\n", "ctrl+o should insert a newline")
+	assert.Nil(t, cmd, "ctrl+o should not produce a command (no submit)")
+}
+
+// --- VMManageScreen tests ---
+
+func TestVMManageScreen_ViewShowsLoading(t *testing.T) {
+	m := screens.NewVMManageScreen(t.TempDir())
+	view := m.View().Content
+	assert.Contains(t, view, "Loading...")
+	assert.True(t, m.Loading())
+}
+
+func TestVMManageScreen_ViewShowsTitle(t *testing.T) {
+	m := screens.NewVMManageScreen(t.TempDir())
+	view := m.View().Content
+	assert.Contains(t, view, "VM Management")
+}
+
+func TestVMManageScreen_ShowsPrereqs(t *testing.T) {
+	m := screens.NewVMManageScreen("")
+	loaded := screens.VMStatusLoadedMsg{
+		Prereqs: []*vm.PrereqError{
+			{Check: "platform", Message: "VM mode requires Linux with KVM support"},
+		},
+	}
+	updated, _ := m.Update(loaded)
+	vs := updated.(screens.VMManageScreen)
+	view := vs.View().Content
+	assert.Contains(t, view, "Prerequisites")
+	assert.Contains(t, view, "platform")
+}
+
+func TestVMManageScreen_ShowsAllPrereqsMet(t *testing.T) {
+	m := screens.NewVMManageScreen("")
+	loaded := screens.VMStatusLoadedMsg{}
+	updated, _ := m.Update(loaded)
+	vs := updated.(screens.VMManageScreen)
+	view := vs.View().Content
+	assert.Contains(t, view, "All prerequisites met")
+}
+
+func TestVMManageScreen_ShowsNoSnapshots(t *testing.T) {
+	m := screens.NewVMManageScreen("")
+	loaded := screens.VMStatusLoadedMsg{}
+	updated, _ := m.Update(loaded)
+	vs := updated.(screens.VMManageScreen)
+	view := vs.View().Content
+	assert.Contains(t, view, "No snapshots found")
+}
+
+func TestVMManageScreen_ShowsPoolNotRunning(t *testing.T) {
+	m := screens.NewVMManageScreen("")
+	loaded := screens.VMStatusLoadedMsg{}
+	updated, _ := m.Update(loaded)
+	vs := updated.(screens.VMManageScreen)
+	view := vs.View().Content
+	assert.Contains(t, view, "not running")
+}
+
+func TestVMManageScreen_ShowsPoolRunning(t *testing.T) {
+	m := screens.NewVMManageScreen("")
+	loaded := screens.VMStatusLoadedMsg{
+		PoolInfo: &vm.PoolStatus{
+			Running:     true,
+			PID:         12345,
+			Version:     "0.36.3",
+			Ready:       1,
+			TargetSize:  1,
+			IdleSeconds: 42,
+		},
+	}
+	updated, _ := m.Update(loaded)
+	vs := updated.(screens.VMManageScreen)
+	view := vs.View().Content
+	assert.Contains(t, view, "running")
+	assert.Contains(t, view, "12345")
+	assert.Contains(t, view, "0.36.3")
+}
+
+func TestVMManageScreen_CursorNavigation(t *testing.T) {
+	m := screens.NewVMManageScreen("")
+	loaded := screens.VMStatusLoadedMsg{
+		Snapshots: []screens.SnapshotEntry{
+			{Version: "0.36.3", Ready: true},
+			{Version: "0.36.2", Ready: false},
+		},
+	}
+	updated, _ := m.Update(loaded)
+	vs := updated.(screens.VMManageScreen)
+	assert.Equal(t, 0, vs.Cursor())
+
+	// Move down
+	updated, _ = vs.Update(tea.KeyPressMsg{Text: "j"})
+	vs = updated.(screens.VMManageScreen)
+	assert.Equal(t, 1, vs.Cursor())
+
+	// Move down again (should clamp, not wrap)
+	updated, _ = vs.Update(tea.KeyPressMsg{Text: "j"})
+	vs = updated.(screens.VMManageScreen)
+	assert.Equal(t, 1, vs.Cursor())
+
+	// Move up
+	updated, _ = vs.Update(tea.KeyPressMsg{Text: "k"})
+	vs = updated.(screens.VMManageScreen)
+	assert.Equal(t, 0, vs.Cursor())
+}
+
+func TestVMManageScreen_EscGoesBack(t *testing.T) {
+	m := screens.NewVMManageScreen("")
+	loaded := screens.VMStatusLoadedMsg{}
+	updated, _ := m.Update(loaded)
+	vs := updated.(screens.VMManageScreen)
+	_, cmd := vs.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
+	assert.NotNil(t, cmd)
+}
+
+func TestVMManageScreen_HasExpectedKeyBindings(t *testing.T) {
+	m := screens.NewVMManageScreen("")
+	loaded := screens.VMStatusLoadedMsg{}
+	updated, _ := m.Update(loaded)
+	vs := updated.(screens.VMManageScreen)
+	// Toggle full help
+	updated, _ = vs.Update(tea.KeyPressMsg{Text: "?"})
+	view := updated.View().Content
+	assert.Contains(t, view, "prepare")
+	assert.Contains(t, view, "delete")
+	assert.Contains(t, view, "start pool")
+	assert.Contains(t, view, "stop pool")
+}
+
+func TestVMManageScreen_PollTickTriggersRefresh(t *testing.T) {
+	m := screens.NewVMManageScreen("")
+	loaded := screens.VMStatusLoadedMsg{}
+	updated, _ := m.Update(loaded)
+	vs := updated.(screens.VMManageScreen)
+	_, cmd := vs.Update(screens.VMPollTickMsg{})
+	assert.NotNil(t, cmd)
+}
+
+func TestVMManageScreen_DeleteOnEmptyDoesNothing(t *testing.T) {
+	m := screens.NewVMManageScreen("")
+	loaded := screens.VMStatusLoadedMsg{}
+	updated, _ := m.Update(loaded)
+	vs := updated.(screens.VMManageScreen)
+	updated, cmd := vs.Update(tea.KeyPressMsg{Text: "d"})
+	assert.Nil(t, cmd)
+	vs2 := updated.(screens.VMManageScreen)
+	assert.Equal(t, "", vs2.Status())
+}
+
+func TestVMManageScreen_SnapshotsInView(t *testing.T) {
+	m := screens.NewVMManageScreen("")
+	loaded := screens.VMStatusLoadedMsg{
+		Snapshots: []screens.SnapshotEntry{
+			{Version: "0.36.3", Ready: true},
+			{Version: "0.36.2", Ready: false},
+		},
+	}
+	updated, _ := m.Update(loaded)
+	vs := updated.(screens.VMManageScreen)
+	view := vs.View().Content
+	assert.Contains(t, view, "0.36.3")
+	assert.Contains(t, view, "0.36.2")
+	assert.Contains(t, view, "ready")
+	assert.Contains(t, view, "incomplete")
 }
