@@ -558,24 +558,6 @@ func connectVsock(udsPath string, port uint32) (net.Conn, error) {
 	return conn, nil
 }
 
-// VsockRequest is the JSON request sent from the host to the VM runner daemon.
-type VsockRequest struct {
-	Code          string `json:"code"`
-	ShowTables    bool   `json:"show_tables"`
-	ShowTableMeta bool   `json:"show_table_meta"`
-}
-
-// VsockResponse is the JSON response from the VM runner daemon.
-type VsockResponse struct {
-	ExitCode   int            `json:"exit_code"`
-	Stdout     string         `json:"stdout"`
-	Stderr     string         `json:"stderr"`
-	ResultRepr *string        `json:"result_repr"`
-	Error      *string        `json:"error"`
-	Tables     []any          `json:"tables"`
-	Timing     map[string]any `json:"_timing,omitempty"`
-}
-
 // ExecuteViaVsock sends a code execution request to the VM runner daemon over
 // vsock and returns the response. The daemon inside the VM has a pre-connected
 // pydeephaven Session, so this avoids all host-side Python overhead.
