@@ -384,18 +384,17 @@ def run_serve(args, code: str):
         print(f"Port {port_to_use} is in use, finding available port...", file=sys.stderr)
         port_to_use = 0
 
-    # Suppress JVM/server output
+    # Suppress JVM/server startup noise at the FD level only.
+    # We must NOT replace sys.stdout/sys.stderr with devnull file objects because
+    # the Deephaven server captures references to sys.stdout/sys.stderr during
+    # start() for its web console output capture. If it captures devnull, print()
+    # from the web console will silently discard output.
     original_stdout_fd = os.dup(1)
     original_stderr_fd = os.dup(2)
-    original_stdout = sys.stdout
-    original_stderr = sys.stderr
     devnull_fd = os.open(os.devnull, os.O_WRONLY)
-    devnull_file = open(os.devnull, "w")
     os.dup2(devnull_fd, 1)
     os.dup2(devnull_fd, 2)
     os.close(devnull_fd)
-    sys.stdout = devnull_file
-    sys.stderr = devnull_file
 
     try:
         server = Server(port=port_to_use, jvm_args=args.jvm_args.split() if args.jvm_args else ["-Xmx4g"])
@@ -405,61 +404,63 @@ def run_serve(args, code: str):
         os.dup2(original_stderr_fd, 2)
         os.close(original_stdout_fd)
         os.close(original_stderr_fd)
-        sys.stdout = original_stdout
-        sys.stderr = original_stderr
-        devnull_file.close()
 
     actual_port = server.port
 
-    # Connect with retry — gRPC services may not be ready immediately after server.start()
-    from pydeephaven import Session
-
     session = None
-    last_err = None
-    for attempt in range(10):
-        try:
-            session = Session(host="localhost", port=actual_port)
-            break
-        except Exception as e:
-            last_err = e
-            time.sleep(0.5)
-    if session is None:
-        print(f"Error: Failed to connect to server: {last_err}", file=sys.stderr)
-        return 2
 
-    try:
-        session.run_script(code)
-    except Exception as e:
-        print(f"Error: Script execution failed: {e}", file=sys.stderr)
+    if code.strip():
+        # Connect with retry — gRPC services may not be ready immediately after server.start()
+        from pydeephaven import Session
+
+        last_err = None
+        for attempt in range(10):
+            try:
+                session = Session(host="localhost", port=actual_port)
+                break
+            except Exception as e:
+                last_err = e
+                time.sleep(0.5)
+        if session is None:
+            print(f"Error: Failed to connect to server: {last_err}", file=sys.stderr)
+            return 2
+
         try:
-            session.close()
-        except Exception:
-            pass
-        return 1
+            session.run_script(code)
+        except Exception as e:
+            print(f"Error: Script execution failed: {e}", file=sys.stderr)
+            try:
+                session.close()
+            except Exception:
+                pass
+            return 1
 
     # Build URL
     url = f"http://localhost:{actual_port}"
     if args.iframe:
         url = f"{url}/iframe/widget/?name={args.iframe}"
 
-    # Signal to Go that we're ready (consumed by Go, not shown to user)
-    print(f"__DH_READY__:{url}", flush=True)
+    # Write sentinel and status directly to FD 1, bypassing sys.stdout which
+    # the Deephaven server has captured for its web console output.
+    def _write_fd1(msg: str):
+        os.write(1, (msg + "\n").encode())
 
-    # User-visible output
-    print(f"Server running at {url}", flush=True)
-    print("Press Ctrl+C to stop.", flush=True)
+    _write_fd1(f"__DH_READY__:{url}")
+    _write_fd1(f"Server running at {url}")
+    _write_fd1("Press Ctrl+C to stop.")
 
     # Keep alive until interrupted
     try:
         while True:
             time.sleep(1)
     except KeyboardInterrupt:
-        print("\nShutting down...", flush=True)
+        print("\nShutting down...", file=sys.stderr, flush=True)
     finally:
-        try:
-            session.close()
-        except Exception:
-            pass
+        if session is not None:
+            try:
+                session.close()
+            except Exception:
+                pass
 
     return 0
 
@@ -521,8 +522,8 @@ def main():
 
     # Read user code from stdin
     code = sys.stdin.read()
-    if not code.strip():
-        # Empty code is a no-op success
+    if not code.strip() and args.mode != "serve":
+        # Empty code is a no-op success (serve mode proceeds to start the server)
         if args.output_json:
             print(json.dumps({
                 "exit_code": 0,

@@ -31,24 +31,26 @@ var (
 
 func addServeCommand(parent *cobra.Command) {
 	cmd := &cobra.Command{
-		Use:   "serve SCRIPT",
-		Short: "Run script and keep server alive (dashboards/services)",
-		Long: `Run a script and keep the Deephaven server running.
+		Use:   "serve [SCRIPT]",
+		Short: "Start server with optional script (dashboards/services)",
+		Long: `Start the Deephaven server, optionally running a script.
 
 Use for:
   - Dashboards and visualizations
   - Long-running data pipelines
   - Services that need persistent server
+  - Interactive exploration (no script)
 
 Opens browser automatically. Server runs until Ctrl+C.
 
 Examples:
+  dh serve
   dh serve dashboard.py
   dh serve dashboard.py --port 8080
   dh serve dashboard.py --iframe my_widget
   dh serve dashboard.py --no-browser
   dh serve dashboard.py --vm`,
-		Args: cobra.ExactArgs(1),
+		Args: cobra.MaximumNArgs(1),
 		RunE: runServe,
 	}
 
@@ -69,13 +71,18 @@ func runServe(cmd *cobra.Command, args []string) error {
 		return runServeVM(cmd, args)
 	}
 
-	scriptPath := args[0]
+	var scriptPath string
+	var scriptContent []byte
+	if len(args) > 0 {
+		scriptPath = args[0]
 
-	// Read script file
-	scriptContent, err := os.ReadFile(scriptPath)
-	if err != nil {
-		fmt.Fprintf(cmd.ErrOrStderr(), "Error: reading script file %s: %v\n", scriptPath, err)
-		os.Exit(output.ExitError)
+		// Read script file
+		var err error
+		scriptContent, err = os.ReadFile(scriptPath)
+		if err != nil {
+			fmt.Fprintf(cmd.ErrOrStderr(), "Error: reading script file %s: %v\n", scriptPath, err)
+			os.Exit(output.ExitError)
+		}
 	}
 
 	// Resolve version
@@ -137,9 +144,11 @@ func runServe(cmd *cobra.Command, args []string) error {
 
 	// Resolve script path
 	callerCwd, _ := os.Getwd()
-	absPath, err := filepath.Abs(scriptPath)
-	if err == nil {
-		runnerArgs = append(runnerArgs, "--script-path", absPath)
+	if scriptPath != "" {
+		absPath, err := filepath.Abs(scriptPath)
+		if err == nil {
+			runnerArgs = append(runnerArgs, "--script-path", absPath)
+		}
 	}
 	runnerArgs = append(runnerArgs, "--cwd", callerCwd)
 

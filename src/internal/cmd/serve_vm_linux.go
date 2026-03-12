@@ -21,14 +21,20 @@ import (
 )
 
 func runServeVM(cmd *cobra.Command, args []string) error {
-	scriptPath := args[0]
+	var scriptPath string
+	var scriptContent []byte
+	if len(args) > 0 {
+		scriptPath = args[0]
 
-	// Read script file
-	scriptContent, err := os.ReadFile(scriptPath)
-	if err != nil {
-		fmt.Fprintf(cmd.ErrOrStderr(), "Error: reading script file %s: %v\n", scriptPath, err)
-		os.Exit(output.ExitError)
+		// Read script file
+		var err error
+		scriptContent, err = os.ReadFile(scriptPath)
+		if err != nil {
+			fmt.Fprintf(cmd.ErrOrStderr(), "Error: reading script file %s: %v\n", scriptPath, err)
+			os.Exit(output.ExitError)
+		}
 	}
+	_ = scriptPath
 
 	// Resolve version: flag → env → config (.dhrc, config.toml) → latest snapshot
 	config.SetConfigDir(ConfigDir)
@@ -156,39 +162,41 @@ func runServeVM(cmd *cobra.Command, args []string) error {
 	defer proxy.Close()
 	actualPort := proxy.Addr().(*net.TCPAddr).Port
 
-	// Execute user script via vsock
-	req := &vm.VsockRequest{
-		Code: string(scriptContent),
-	}
-	resp, err := vm.ExecuteViaVsock(info.VsockPath, vm.VsockPort, req)
-	if err != nil {
-		fmt.Fprintf(cmd.ErrOrStderr(), "Error: executing script: %v\n", err)
-		os.Exit(output.ExitError)
-	}
+	// Execute user script via vsock (if a script was provided)
+	if len(scriptContent) > 0 {
+		req := &vm.VsockRequest{
+			Code: string(scriptContent),
+		}
+		resp, err := vm.ExecuteViaVsock(info.VsockPath, vm.VsockPort, req)
+		if err != nil {
+			fmt.Fprintf(cmd.ErrOrStderr(), "Error: executing script: %v\n", err)
+			os.Exit(output.ExitError)
+		}
 
-	// Print any script output
-	if resp.Stdout != "" {
-		fmt.Fprint(cmd.OutOrStdout(), resp.Stdout)
-		if !strings.HasSuffix(resp.Stdout, "\n") {
-			fmt.Fprintln(cmd.OutOrStdout())
+		// Print any script output
+		if resp.Stdout != "" {
+			fmt.Fprint(cmd.OutOrStdout(), resp.Stdout)
+			if !strings.HasSuffix(resp.Stdout, "\n") {
+				fmt.Fprintln(cmd.OutOrStdout())
+			}
 		}
-	}
-	if resp.Stderr != "" {
-		fmt.Fprint(cmd.ErrOrStderr(), resp.Stderr)
-		if !strings.HasSuffix(resp.Stderr, "\n") {
-			fmt.Fprintln(cmd.ErrOrStderr())
+		if resp.Stderr != "" {
+			fmt.Fprint(cmd.ErrOrStderr(), resp.Stderr)
+			if !strings.HasSuffix(resp.Stderr, "\n") {
+				fmt.Fprintln(cmd.ErrOrStderr())
+			}
 		}
-	}
 
-	if resp.ExitCode != 0 {
-		errMsg := ""
-		if resp.Error != nil {
-			errMsg = *resp.Error
+		if resp.ExitCode != 0 {
+			errMsg := ""
+			if resp.Error != nil {
+				errMsg = *resp.Error
+			}
+			if errMsg != "" {
+				fmt.Fprintln(cmd.ErrOrStderr(), errMsg)
+			}
+			os.Exit(resp.ExitCode)
 		}
-		if errMsg != "" {
-			fmt.Fprintln(cmd.ErrOrStderr(), errMsg)
-		}
-		os.Exit(resp.ExitCode)
 	}
 
 	// Construct URL and open browser
