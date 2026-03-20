@@ -1,0 +1,13 @@
+[flex]
+  [heading] "Flex Row"
+  [flex]
+    "Item 1"
+    "Item 2"
+    "Item 3"
+  -----
+  [heading] "Grid Layout"
+  [grid]
+    "A"
+    "B"
+    "C"
+    "D"

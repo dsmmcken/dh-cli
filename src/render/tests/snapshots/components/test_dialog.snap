@@ -1,0 +1,4 @@
+[flex]
+  @e1 [action_button] "Open Dialog"
+  "Action: none"
+  @e2 [action_button] "Dismissable Dialog"

@@ -1,0 +1,3 @@
+[flex]
+  @e1 [picker] "Random Items" (100 options)
+  "Selected: None"

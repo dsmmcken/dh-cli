@@ -1,0 +1,8 @@
+[flex]
+  [heading] "Display Components"
+  "Regular text content"
+  [badge] "New"
+  [avatar] "User"
+  [icon] "account"
+  [illustrated_message] "No results" "Try a different search term"
+  [labeled_value] "CPU Usage" value="45%"

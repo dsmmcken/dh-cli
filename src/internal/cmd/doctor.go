@@ -10,6 +10,7 @@ import (
 	"github.com/dsmmcken/dh-cli/src/internal/config"
 	"github.com/dsmmcken/dh-cli/src/internal/java"
 	"github.com/dsmmcken/dh-cli/src/internal/output"
+	"github.com/dsmmcken/dh-cli/src/internal/render"
 	"github.com/dsmmcken/dh-cli/src/internal/versions"
 	"github.com/spf13/cobra"
 	"golang.org/x/sys/unix"
@@ -51,6 +52,8 @@ var (
 	VersionsChecker       = checkVersions
 	DefaultVersionChecker = checkDefaultVersion
 	DiskSpaceChecker      = checkDiskSpace
+	NodeChecker           = checkNodeDoctor
+	UffdChecker           = checkUffd
 )
 
 func runDoctor(cmd *cobra.Command, args []string) error {
@@ -60,9 +63,11 @@ func runDoctor(cmd *cobra.Command, args []string) error {
 	checks := []CheckResult{
 		UVChecker(),
 		JavaChecker(dhHome),
+		NodeChecker(),
 		VersionsChecker(dhHome),
 		DefaultVersionChecker(dhHome),
 		DiskSpaceChecker(dhHome),
+		UffdChecker(),
 	}
 
 	healthy := true
@@ -289,6 +294,26 @@ func checkDiskSpace(dhHome string) CheckResult {
 	}
 }
 
+func checkNodeDoctor() CheckResult {
+	_, err := render.CheckNode()
+	if err != nil {
+		detail := err.Error()
+		// Node is optional — only needed for dh render
+		return CheckResult{
+			Name:   "Node.js",
+			Status: "warning",
+			Detail: detail,
+		}
+	}
+
+	version := render.NodeVersion()
+	return CheckResult{
+		Name:   "Node.js",
+		Status: "ok",
+		Detail: fmt.Sprintf("%s (required for dh render)", version),
+	}
+}
+
 func shortenHome(path string) string {
 	home, err := os.UserHomeDir()
 	if err != nil {
@@ -328,6 +353,15 @@ func runFixes(cmd *cobra.Command, checks []CheckResult, dhHome string) {
 					}
 				} else {
 					fmt.Fprintln(cmd.OutOrStdout(), "\nFix: Install a version first with 'dh install', then run 'dh use <version>'.")
+				}
+			}
+		case "VM/UFFD":
+			if c.Status == "warning" {
+				fmt.Fprintln(cmd.OutOrStdout(), "\nFix: Enabling userfaultfd for fast VM snapshot restore...")
+				if err := fixUffd(); err != nil {
+					fmt.Fprintf(cmd.OutOrStdout(), "  Could not auto-fix. Run manually: %s\n", err)
+				} else {
+					fmt.Fprintln(cmd.OutOrStdout(), "  Done. VM snapshots will now use UFFD (fast) instead of file-backed (slow) restore.")
 				}
 			}
 		}

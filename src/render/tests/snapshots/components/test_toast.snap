@@ -1,0 +1,4 @@
+[flex]
+  @e1 [button] "Show Info Toast"
+  @e2 [button] "Show Error Toast"
+  "Last toast: none"

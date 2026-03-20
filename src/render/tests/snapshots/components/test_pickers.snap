@@ -1,0 +1,5 @@
+[flex]
+  @e1 [picker] "Fruit Picker" (4 options)
+  "Picked: None"
+  @e2 [combobox] "Color Combo"
+  "Combo: None"

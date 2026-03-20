@@ -39,6 +39,7 @@ func NewRootCmd() *cobra.Command {
 	addServeCommand(cmd)
 	addReplCommand(cmd)
 	addVMCommands(cmd)
+	addRenderCommands(cmd)
 	return cmd
 }
 
@@ -46,7 +47,17 @@ func newRootCmd() *cobra.Command {
 	rootCmd := &cobra.Command{
 		Use:   "dh",
 		Short: "Deephaven CLI tool",
-		Long:  "dh — CLI tool for managing Deephaven installations, servers, and configuration.",
+		Long: `dh — CLI tool for managing Deephaven installations, servers, and configuration.
+
+Common workflows:
+
+  dh exec script.py            Run a Python script on Deephaven
+  dh serve script.py           Start a persistent Deephaven server
+  dh repl                      Interactive Python REPL
+  dh render script.py          Render a Deephaven UI widget (headless)
+  dh render script.py snapshot Print widget accessibility tree
+  dh render script.py tables   List exported tables
+  dh render script.py click X  Interact with a rendered widget`,
 		Version: fmt.Sprintf("dh v%s", Version),
 		SilenceUsage:  true,
 		SilenceErrors: true,

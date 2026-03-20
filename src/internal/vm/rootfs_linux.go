@@ -6,9 +6,12 @@ import (
 	_ "embed"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
+
+	"github.com/dsmmcken/dh-cli/src/internal/render"
 )
 
 //go:embed vm_runner.py
@@ -26,6 +29,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     python3 python3-pip python3-venv python3-dev \
     openjdk-17-jre-headless \
     iproute2 \
+    ca-certificates curl gnupg \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Node.js 22 LTS via NodeSource (22+ has built-in navigator global)
+RUN mkdir -p /etc/apt/keyrings \
+    && curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key \
+       | gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg \
+    && echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_22.x nodistro main" \
+       > /etc/apt/sources.list.d/nodesource.list \
+    && apt-get update && apt-get install -y --no-install-recommends nodejs \
     && rm -rf /var/lib/apt/lists/*
 
 RUN python3 -m pip install --no-cache-dir --upgrade setuptools wheel
@@ -41,6 +54,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends gcc \
     && strip /opt/libworkspace.so \
     && rm /tmp/libworkspace.c \
     && apt-get purge -y gcc && rm -rf /var/lib/apt/lists/*
+
+# Install render runtime (Node.js oneshot renderer)
+COPY render/ /opt/render/
+RUN cd /opt/render && npm install --omit=dev --legacy-peer-deps --loglevel error
+
+# Persistent JSAPI cache directory — downloaded JSAPI modules are stored here
+# instead of /tmp so they survive snapshot restore (tmpfs is re-mounted fresh).
+RUN mkdir -p /opt/render/jsapi-cache
 
 COPY init.sh /sbin/init.sh
 RUN chmod +x /sbin/init.sh
@@ -58,6 +79,14 @@ mount -t tmpfs tmpfs /tmp
 
 # Ensure loopback interface is up (required for localhost TCP after snapshot restore)
 ip link set lo up
+
+# Populate /etc/hosts — Docker generates this at container runtime so the
+# exported rootfs has an empty file. Without it, getaddrinfo("localhost")
+# fails, breaking any process that resolves hostnames (e.g. Node.js http.get).
+cat > /etc/hosts <<HOSTS
+127.0.0.1 localhost
+::1       localhost ip6-localhost ip6-loopback
+HOSTS
 
 # Transparent workspace file access via LD_PRELOAD.
 # libworkspace.so intercepts file operations for /workspace/* paths and proxies
@@ -112,6 +141,14 @@ done
 
 echo "RUNNER_READY" > /dev/ttyS0 2>/dev/null || true
 
+# Pre-warm Node.js: populate V8 compile cache and JSAPI file cache.
+# The warmup script loads all modules and JSAPI, then hard-exits via
+# process.exit(0). Caches persist on the ext4 disk across snapshot restore.
+NODE_COMPILE_CACHE=/opt/render/.compile-cache \
+  node --no-warnings /opt/render/bin/warmup.mjs 2>/dev/ttyS0 || true
+
+echo "RENDER_WARM" > /dev/ttyS0 2>/dev/null || true
+
 # Keep init alive
 exec sleep infinity
 `
@@ -146,6 +183,12 @@ func buildRootfsDocker(paths *VMPaths, version string, stderr io.Writer) error {
 	// Write libworkspace.c (LD_PRELOAD library for transparent workspace access)
 	if err := os.WriteFile(filepath.Join(tmpDir, "libworkspace.c"), []byte(libworkspaceSource), 0o644); err != nil {
 		return fmt.Errorf("writing libworkspace.c: %w", err)
+	}
+
+	// Extract render runtime embedded files for Docker build
+	renderDir := filepath.Join(tmpDir, "render")
+	if err := extractRenderEmbedded(renderDir); err != nil {
+		return fmt.Errorf("extracting render runtime: %w", err)
 	}
 
 	imageName := fmt.Sprintf("dh-vm-%s", version)
@@ -282,7 +325,7 @@ func createExt4WithSudo(tarPath, outputPath, extractDir string, stderr io.Writer
 		"-F",
 		"-b", "4096",
 		outputPath,
-		"2G",
+		"3G",
 	)
 	mkfsCmd.Stderr = stderr
 	if err := mkfsCmd.Run(); err != nil {
@@ -295,6 +338,37 @@ func createExt4WithSudo(tarPath, outputPath, extractDir string, stderr io.Writer
 	}
 
 	return nil
+}
+
+// extractRenderEmbedded extracts the render package's embedded FS to destDir.
+func extractRenderEmbedded(destDir string) error {
+	return fs.WalkDir(render.EmbeddedFS, "embedded", func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		rel, err := filepath.Rel("embedded", path)
+		if err != nil {
+			return err
+		}
+		if rel == "." {
+			return nil
+		}
+		if d.Name() == ".gitkeep" {
+			return nil
+		}
+		dest := filepath.Join(destDir, rel)
+		if d.IsDir() {
+			return os.MkdirAll(dest, 0o755)
+		}
+		data, err := render.EmbeddedFS.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
+			return err
+		}
+		return os.WriteFile(dest, data, 0o644)
+	})
 }
 
 // createExt4WithFakeroot extracts and builds the ext4 image using fakeroot.
@@ -333,7 +407,7 @@ func createExt4WithFakeroot(tarPath, outputPath, extractDir string, stderr io.Wr
 		"-F",
 		"-b", "4096",
 		outputPath,
-		"2G",
+		"3G",
 	)
 	mkfsCmd.Stderr = stderr
 	if err := mkfsCmd.Run(); err != nil {

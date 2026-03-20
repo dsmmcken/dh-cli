@@ -1,0 +1,122 @@
+[flex]
+  [heading] "All Components"
+  "Plain text"
+  [badge] "Badge"
+  [avatar] "User Avatar"
+  [icon] "account"
+  [labeled_value] "Score" value="95.5"
+  -----
+  [markdown] "Bold and italic"
+  [image] "Sample Image"
+  @e1 [text_field] "Text Field" value="hello"
+  @e2 [text_area] "Text Area" value="multi
+line"
+  @e3 [search_field] "Search" value=""
+  @e4 [number_field] "Number" value="42"
+  @e5 [button] "Primary"
+  @e6 [button] "Secondary"
+  @e7 [action_button] "Action"
+  @e8 [toggle_button] "Toggle"
+  @e9 [logic_button] "and"
+  @e10 [button_group]
+    @e11 [button] "Btn A"
+    @e12 [button] "Btn B"
+  @e13 [action_group]
+    @e14 [action_button] "Edit"
+    @e15 [action_button] "Delete"
+  @e16 [checkbox] [unchecked]
+  "Accept terms"
+  @e17 [checkbox_group] "Checkbox Group"
+    @e18 [checkbox] [unchecked]
+    "Opt 1"
+    @e19 [checkbox] [unchecked]
+    "Opt 2"
+  @e20 [switch] [unchecked]
+  "Dark mode"
+  @e21 [radio_group] "Radio Group"
+    @e22 [radio]
+    "Alpha"
+    @e23 [radio]
+    "Beta"
+  @e24 [picker] "Fruit Picker" (3 options)
+  @e25 [combobox] "Color Combo"
+  @e26 [color_picker] "Color Picker" (vibrant red)
+  @e27 [slider] "Volume" value="50"
+  @e28 [range_slider] "Range" value="20 – 80"
+  [meter] "Meter" 75%
+  [progressbar] "Progress60%"
+    "Progress"
+    "60%"
+  [progress_circle] "Loading" 80%
+  "Date Field"
+  @e29 [date_field]
+  "Date Picker"
+  @e30 [date_picker]
+    @e31 [button] "Calendar"
+  "Date Range Picker"
+  @e32 [date_range_picker]
+    @e33 [button] "Calendar"
+  "Time Field"
+  @e34 [time_field]
+  @e35 [calendar] "Calendar, January 2024" selected="Jan 15, 2024"
+    @e36 [action_button] "Previous"
+    @e37 [action_button] "Next"
+    [grid] 35 days (Dec 31, 2023 – Feb 3, 2024)
+    @e38 [button] "Next"
+  @e39 [range_calendar] "Range Calendar, March 2026" today="Mar 18, 2026"
+    @e40 [action_button] "Previous"
+    @e41 [action_button] "Next"
+    [grid] 35 days (Mar 1, 2026 – Apr 4, 2026)
+    @e42 [button] "Next"
+  @e43 [link] "Example Link"
+  @e44 [breadcrumbs] "Breadcrumbs"
+    @e45 [link] "Home"
+    @e46 [link] "Products"
+    @e47 [link] "Detail"
+  @e48 [action_menu] "More actions"
+  @e49 [action_button] "File Menu"
+  [heading] "Disclosure Title"
+    @e50 [disclosure] "Disclosure Title"
+  [heading] "Accordion Section 1"
+    @e51 [disclosure] "Accordion Section 1"
+  [heading] "Accordion Section 2"
+    @e52 [disclosure] "Accordion Section 2"
+  [tablist]
+    @e53 [tab] "Tab A"
+    @e54 [tab] "Tab B"
+  [tabpanel]
+    "Tab A content"
+  "Tags"
+  [grid] "onetwothree"
+    [row] "one"
+      [gridcell] "one"
+        "one"
+        @e55 [button] "Remove"
+    [row] "two"
+      [gridcell] "two"
+        "two"
+        @e56 [button] "Remove"
+    [row] "three"
+      [gridcell] "three"
+        "three"
+        @e57 [button] "Remove"
+  @e58 [action_button] "Open Dialog"
+  @e59 [contextual_help] "Help"
+  [inline_alert] "Alert" "Something happened"
+  [illustrated_message] icon="warning" "No results" "Try a different search"
+  @e60 [form]
+    @e61 [text_field] "Form Name" value=""
+    @e62 [button] "Submit"
+  @e63 [list_view] "Sample List"
+  [UITable] (Table) 3 rows, 3 columns
+    "frontColumns: Name"
+    @e64 [button] "Expand table"
+  [Figure] scatter | 1 traces
+    "x: Age"
+    "y: Score"
+    @e65 [button] "Expand figure"
+  "Inside view"
+  [grid]
+    "Grid A"
+    "Grid B"
+  "Inside fragment"

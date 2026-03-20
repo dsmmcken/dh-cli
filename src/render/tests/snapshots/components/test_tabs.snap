@@ -1,0 +1,8 @@
+[tablist]
+  @e1 [tab] "First Tab"
+  @e2 [tab] "Second Tab"
+  @e3 [tab] "Third Tab"
+[tabpanel]
+  [flex]
+    "Content of Tab 1"
+    @e4 [button] "Tab 1 Button"

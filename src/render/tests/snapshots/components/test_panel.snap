@@ -1,0 +1,4 @@
+[flex]
+  [heading] "Panel Content"
+  "This is inside a panel."
+  @e1 [button] "Panel Button"

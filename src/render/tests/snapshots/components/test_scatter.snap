@@ -1,0 +1,7 @@
+[Figure] scatter | 2 traces
+  "Square Root"
+  "x: X"
+  "y: Y"
+  "scatter "alpha""
+  "scatter "beta""
+  @e1 [button] "Expand figure"

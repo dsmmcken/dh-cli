@@ -1,0 +1,6 @@
+[flex]
+  [heading] "Count: 0"
+  "Message: Hello"
+  @e1 [button] "Increment"
+  @e2 [button] "Reset"
+  @e3 [text_field] "Message" value="Hello"

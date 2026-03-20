@@ -1,0 +1,202 @@
+//go:build linux
+
+package cmd
+
+import (
+	"fmt"
+	"os"
+	"strings"
+	"sync"
+	"time"
+
+	"github.com/dsmmcken/dh-cli/src/internal/config"
+	"github.com/dsmmcken/dh-cli/src/internal/output"
+	"github.com/dsmmcken/dh-cli/src/internal/vm"
+	"github.com/spf13/cobra"
+)
+
+func runRenderVM(cmd *cobra.Command, args []string, diagnose bool) error {
+	scriptPath := args[0]
+
+	// Read script file
+	scriptContent, err := os.ReadFile(scriptPath)
+	if err != nil {
+		return fmt.Errorf("reading script file %s: %w", scriptPath, err)
+	}
+
+	// Resolve version: flag → env → config → latest snapshot
+	config.SetConfigDir(ConfigDir)
+	dhHome := config.DHHome()
+	vmPaths := vm.NewVMPaths(dhHome)
+
+	version, err := config.ResolveVersion(renderVersionFlag, os.Getenv("DH_VERSION"))
+	if err != nil {
+		// Try latest snapshot as last resort
+		snapVersions, snapErr := listSnapshotVersions(vmPaths)
+		if snapErr != nil || len(snapVersions) == 0 {
+			return fmt.Errorf("resolving version: %w", err)
+		}
+		version = snapVersions[0]
+	}
+
+	if output.IsVerbose() {
+		fmt.Fprintf(cmd.ErrOrStderr(), "Resolved version: %s\n", version)
+	}
+
+	// Try pool checkout first (fast path)
+	var info *vm.InstanceInfo
+	if checkout := tryRenderPoolCheckout(cmd, version); checkout != nil {
+		version = checkout.Version
+		info = &vm.InstanceInfo{
+			ID:            checkout.InstanceID,
+			PID:           checkout.PID,
+			VsockPath:     checkout.VsockPath,
+			SnapVsockPath: checkout.SnapVsockPath,
+		}
+		defer vm.DestroyCheckedOutVM(checkout)
+
+		if output.IsVerbose() {
+			fmt.Fprintf(cmd.ErrOrStderr(), "Using pool VM %s (PID %d)\n",
+				checkout.InstanceID, checkout.PID)
+		}
+	} else {
+		// Cold restore path — start page cache warming ASAP so the render
+		// daemon's memory pages are in cache by the time we send the request.
+		vm.WarmSnapshotPageCacheAsync(vmPaths, version)
+
+		var prereqErrs []*vm.PrereqError
+		var snapErr error
+		var wg sync.WaitGroup
+		wg.Add(2)
+		go func() { defer wg.Done(); prereqErrs = vm.CheckPrerequisites(vmPaths) }()
+		go func() { defer wg.Done(); snapErr = vm.CheckSnapshot(vmPaths, version) }()
+		go vm.CleanupStaleInstances(vmPaths)
+		wg.Wait()
+
+		if len(prereqErrs) > 0 {
+			var msgs []string
+			for _, e := range prereqErrs {
+				msgs = append(msgs, e.Error())
+			}
+			return fmt.Errorf("VM prerequisites not met:\n  %s", strings.Join(msgs, "\n  "))
+		}
+		if snapErr != nil {
+			return snapErr
+		}
+
+		useUffd := os.Getenv("DH_VM_NO_UFFD") != "1"
+		vmCfg := &vm.VMConfig{
+			DHHome:  dhHome,
+			Version: version,
+			Verbose: output.IsVerbose(),
+			UseUffd: useUffd,
+		}
+
+		if !output.IsQuiet() {
+			fmt.Fprintln(cmd.ErrOrStderr(), "Starting Deephaven VM...")
+		}
+
+		start := time.Now()
+		restoreInfo, machine, uffdCloser, restoreErr := vm.RestoreFromSnapshot(cmd.Context(), vmCfg, vmPaths, cmd.ErrOrStderr())
+		if restoreErr != nil {
+			return fmt.Errorf("restoring VM: %w", restoreErr)
+		}
+		info = restoreInfo
+		defer func() {
+			vm.DestroyInstance(machine, info, vmPaths)
+			if uffdCloser != nil {
+				uffdCloser.Close()
+			}
+		}()
+
+		if output.IsVerbose() {
+			fmt.Fprintf(cmd.ErrOrStderr(), "VM restored in %dms (instance %s)\n",
+				time.Since(start).Milliseconds(), info.ID)
+		}
+	}
+
+	// Start host file server for workspace file access
+	cwd, _ := os.Getwd()
+	fileServer, err := vm.StartFileServer(info.SnapVsockPath, cwd)
+	if err != nil && output.IsVerbose() {
+		fmt.Fprintf(cmd.ErrOrStderr(), "Warning: file server: %v\n", err)
+	}
+	if fileServer != nil {
+		defer fileServer.Close()
+	}
+
+	// Build action args
+	var actionArgs []string
+	if diagnose {
+		actionArgs = []string{"diagnose"}
+	} else {
+		actionArgs = args[1:]
+	}
+
+	// Build vsock render request.
+	// renderWidgetFlag is set by runRenderPipeline (auto-detected or from --widget flag).
+	req := &vm.VsockRequest{
+		Code:          string(scriptContent),
+		Render:        true,
+		Widget:        renderWidgetFlag,
+		Actions:       actionArgs,
+		RenderTimeout: renderTimeoutFlag,
+		MaxRows:       renderRowsFlag,
+		RenderJSON:    renderJSONFlag || output.IsJSON(),
+		Verbose:       output.IsVerbose(),
+	}
+
+	resp, err := vm.ExecuteViaVsock(info.VsockPath, vm.VsockPort, req)
+	if err != nil {
+		return fmt.Errorf("executing render via VM: %w", err)
+	}
+
+	// Print render output to stdout
+	if resp.RenderOutput != "" {
+		fmt.Fprint(cmd.OutOrStdout(), resp.RenderOutput)
+	}
+
+	// Print stderr (warnings, etc.)
+	if resp.Stderr != "" {
+		fmt.Fprint(cmd.ErrOrStderr(), resp.Stderr)
+	}
+
+	if resp.ExitCode != 0 {
+		errMsg := ""
+		if resp.Error != nil {
+			errMsg = *resp.Error
+		}
+		if errMsg != "" {
+			fmt.Fprintln(cmd.ErrOrStderr(), errMsg)
+		}
+		os.Exit(resp.ExitCode)
+	}
+
+	return nil
+}
+
+// tryRenderPoolCheckout attempts to check out a warm VM from the pool daemon.
+func tryRenderPoolCheckout(cmd *cobra.Command, version string) *vm.CheckoutInfo {
+	if !renderPoolFlag {
+		return nil
+	}
+
+	checkout, err := vm.PoolCheckout()
+	if err != nil {
+		if output.IsVerbose() {
+			fmt.Fprintf(cmd.ErrOrStderr(), "Pool checkout: %v, falling back to cold restore\n", err)
+		}
+		return nil
+	}
+
+	if version != "" && checkout.Version != version {
+		if output.IsVerbose() {
+			fmt.Fprintf(cmd.ErrOrStderr(), "Pool version mismatch (pool=%s, requested=%s), falling back to cold restore\n",
+				checkout.Version, version)
+		}
+		vm.DestroyCheckedOutVM(checkout)
+		return nil
+	}
+
+	return checkout
+}

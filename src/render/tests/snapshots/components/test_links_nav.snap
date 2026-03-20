@@ -1,0 +1,6 @@
+[flex]
+  @e1 [link] "Example Link"
+  @e2 [breadcrumbs] "Breadcrumbs"
+    @e3 [action_button] "…"
+    @e4 [link] "Detail"
+  "Breadcrumb: home"

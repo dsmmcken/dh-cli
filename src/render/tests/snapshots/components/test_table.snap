@@ -1,0 +1,4 @@
+[flex]
+  [heading] "Table Component"
+  [UITable] (Table) 50 rows, 3 columns
+    @e1 [button] "Expand table"

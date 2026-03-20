@@ -1,0 +1,16 @@
+[flex]
+  "Date Field"
+  @e1 [date_field]
+  "Date field: None"
+  "Date Picker"
+  @e2 [date_picker]
+    @e3 [button] "Calendar"
+  "Date picker: None"
+  "Time Field"
+  @e4 [time_field]
+  "Time: None"
+  @e5 [calendar] "Event Calendar, January 2024" selected="Jan 15, 2024"
+    @e6 [action_button] "Previous"
+    @e7 [action_button] "Next"
+    [grid] 35 days (Dec 31, 2023 – Feb 3, 2024)
+    @e8 [button] "Next"

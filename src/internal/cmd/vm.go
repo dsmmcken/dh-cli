@@ -144,6 +144,12 @@ func runVMPrepare(cmd *cobra.Command, args []string) error {
 
 	fmt.Fprintf(cmd.ErrOrStderr(), "Snapshot ready for version %s. Use 'dh exec --vm' for fast execution.\n", version)
 
+	if !vm.ProbeUffd() {
+		fmt.Fprintln(cmd.ErrOrStderr(), "\nWarning: UFFD not available — snapshot restore will use slow file-backed memory.")
+		fmt.Fprintln(cmd.ErrOrStderr(), "  Enable for 10-30x faster restore: sudo sysctl -w vm.unprivileged_userfaultfd=1")
+		fmt.Fprintln(cmd.ErrOrStderr(), "  Persist across reboots:           echo vm.unprivileged_userfaultfd=1 | sudo tee /etc/sysctl.d/99-userfaultfd.conf")
+	}
+
 	if output.IsJSON() {
 		return output.PrintJSON(cmd.OutOrStdout(), map[string]any{
 			"version":      version,

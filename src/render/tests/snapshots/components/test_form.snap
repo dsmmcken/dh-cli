@@ -1,0 +1,7 @@
+[flex]
+  @e1 [form]
+    @e2 [text_field] "Name ​" value=""
+    @e3 [text_field] "Email ​" value=""
+    @e4 [button] "Submit"
+  "Submitted: False"
+  "Name: , Email:"

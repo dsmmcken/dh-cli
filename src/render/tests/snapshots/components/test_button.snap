@@ -1,0 +1,12 @@
+[flex]
+  [heading] "Button clicks: 0"
+  @e1 [button] "Primary"
+  @e2 [button] "Secondary"
+  @e3 [action_button] "Action"
+  @e4 [button_group]
+    @e5 [button] "A"
+    @e6 [button] "B"
+  @e7 [toggle_button] "Toggle"
+  "Toggle: False"
+  @e8 [logic_button] "or"
+  "Logic: or"

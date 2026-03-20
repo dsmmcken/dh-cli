@@ -1,0 +1,12 @@
+node_modules/
+
+# Environment
+.env
+.env.*
+
+# Test markers (written by vitest globalSetup, not committed)
+tests/setup/.dh-server-ready
+
+# OS
+.DS_Store
+Thumbs.db

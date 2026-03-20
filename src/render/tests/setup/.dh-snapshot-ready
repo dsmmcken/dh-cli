@@ -1,0 +1,258 @@
+{
+  "components": [
+    {
+      "name": "test_accordion",
+      "widget": "accordion_widget",
+      "url": "http://localhost:45499"
+    },
+    {
+      "name": "test_button",
+      "widget": "button_widget",
+      "url": "http://localhost:36175"
+    },
+    {
+      "name": "test_checkboxes",
+      "widget": "checkboxes_widget",
+      "url": "http://localhost:37671"
+    },
+    {
+      "name": "test_color_picker",
+      "widget": "color_picker_widget",
+      "url": "http://localhost:36681"
+    },
+    {
+      "name": "test_complex_interaction",
+      "widget": "complex_widget",
+      "url": "http://localhost:34491"
+    },
+    {
+      "name": "test_contextual_help",
+      "widget": "contextual_help_widget",
+      "url": "http://localhost:41951"
+    },
+    {
+      "name": "test_date_time",
+      "widget": "date_time_widget",
+      "url": "http://localhost:33181"
+    },
+    {
+      "name": "test_dialog",
+      "widget": "dialog_widget",
+      "url": "http://localhost:44701"
+    },
+    {
+      "name": "test_disclosure",
+      "widget": "disclosure_widget",
+      "url": "http://localhost:35213"
+    },
+    {
+      "name": "test_display",
+      "widget": "display_widget",
+      "url": "http://localhost:41301"
+    },
+    {
+      "name": "test_form",
+      "widget": "form_widget",
+      "url": "http://localhost:44249"
+    },
+    {
+      "name": "test_fragment",
+      "widget": "fragment_widget",
+      "url": "http://localhost:33263"
+    },
+    {
+      "name": "test_html",
+      "widget": "html_widget",
+      "url": "http://localhost:40527"
+    },
+    {
+      "name": "test_inline_alert",
+      "widget": "inline_alert_widget",
+      "url": "http://localhost:46639"
+    },
+    {
+      "name": "test_layout",
+      "widget": "layout_widget",
+      "url": "http://localhost:34919"
+    },
+    {
+      "name": "test_links_nav",
+      "widget": "links_nav_widget",
+      "url": "http://localhost:45879"
+    },
+    {
+      "name": "test_list_view",
+      "widget": "list_view_widget",
+      "url": "http://localhost:42185"
+    },
+    {
+      "name": "test_markdown",
+      "widget": "markdown_widget",
+      "url": "http://localhost:35577"
+    },
+    {
+      "name": "test_menu",
+      "widget": "menu_widget",
+      "url": "http://localhost:43867"
+    },
+    {
+      "name": "test_meter_progress",
+      "widget": "meter_progress_widget",
+      "url": "http://localhost:37021"
+    },
+    {
+      "name": "test_panel",
+      "widget": "panel_widget",
+      "url": "http://localhost:46803"
+    },
+    {
+      "name": "test_pickers",
+      "widget": "pickers_widget",
+      "url": "http://localhost:36831"
+    },
+    {
+      "name": "test_scatter",
+      "widget": "scatter_widget",
+      "url": "http://localhost:37271"
+    },
+    {
+      "name": "test_sliders",
+      "widget": "sliders_widget",
+      "url": "http://localhost:37867"
+    },
+    {
+      "name": "test_table",
+      "widget": "table_widget",
+      "url": "http://localhost:43009"
+    },
+    {
+      "name": "test_tabs",
+      "widget": "tabs_widget",
+      "url": "http://localhost:33417"
+    },
+    {
+      "name": "test_tag_group",
+      "widget": "tag_group_widget",
+      "url": "http://localhost:38161"
+    },
+    {
+      "name": "test_text_inputs",
+      "widget": "text_inputs_widget",
+      "url": "http://localhost:38221"
+    },
+    {
+      "name": "test_toast",
+      "widget": "toast_widget",
+      "url": "http://localhost:39631"
+    }
+  ],
+  "errors": [
+    {
+      "name": "err_bad_callback",
+      "widget": "err_bad_callback_widget",
+      "url": "http://localhost:45193"
+    },
+    {
+      "name": "err_dialog_trigger_children",
+      "widget": "err_dialog_trigger_children_widget",
+      "url": "http://localhost:42295"
+    },
+    {
+      "name": "err_divide_by_zero",
+      "widget": "err_divide_by_zero_widget",
+      "url": "http://localhost:40391"
+    },
+    {
+      "name": "err_explicit_throw",
+      "widget": "err_explicit_throw_widget",
+      "url": "http://localhost:37977"
+    },
+    {
+      "name": "err_import_missing",
+      "widget": "err_import_missing_widget",
+      "url": "http://localhost:44665"
+    },
+    {
+      "name": "err_index_out_of_range",
+      "widget": "err_index_out_of_range_widget",
+      "url": "http://localhost:35773"
+    },
+    {
+      "name": "err_infinite_render",
+      "widget": "err_infinite_render_widget",
+      "url": "http://localhost:38705"
+    },
+    {
+      "name": "err_key_error",
+      "widget": "err_key_error_widget",
+      "url": "http://localhost:35197"
+    },
+    {
+      "name": "err_missing_prop",
+      "widget": "err_missing_prop_widget",
+      "url": "http://localhost:39903"
+    },
+    {
+      "name": "err_mutation_during_render",
+      "widget": "err_mutation_widget",
+      "url": "http://localhost:42871"
+    },
+    {
+      "name": "err_none_access",
+      "widget": "err_none_access_widget",
+      "url": "http://localhost:36277"
+    },
+    {
+      "name": "err_recursion",
+      "widget": "err_recursion_widget",
+      "url": "http://localhost:42301"
+    },
+    {
+      "name": "err_stale_closure",
+      "widget": "err_stale_closure_widget",
+      "url": "http://localhost:38527"
+    },
+    {
+      "name": "err_type_mismatch",
+      "widget": "err_type_mismatch_widget",
+      "url": "http://localhost:34869"
+    },
+    {
+      "name": "err_wrong_children",
+      "widget": "err_wrong_children_widget",
+      "url": "http://localhost:42401"
+    }
+  ],
+  "complex": [
+    {
+      "name": "test_combined_counter",
+      "widget": "combined_counter_widget",
+      "url": "http://localhost:34813"
+    },
+    {
+      "name": "test_combined_dashboard",
+      "widget": "combined_dashboard_widget",
+      "url": "http://localhost:36623"
+    },
+    {
+      "name": "test_combined_error",
+      "widget": "combined_error_widget",
+      "url": "http://localhost:40559"
+    },
+    {
+      "name": "test_dashboard",
+      "widget": "my_widget",
+      "url": "http://localhost:41207"
+    },
+    {
+      "name": "test_interactive",
+      "widget": "counter_widget",
+      "url": "http://localhost:34219"
+    },
+    {
+      "name": "test_iris_dashboard",
+      "widget": "iris_dashboard_widget",
+      "url": "http://localhost:43653"
+    }
+  ]
+}

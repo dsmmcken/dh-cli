@@ -1,0 +1,4 @@
+[flex]
+  [heading] "Click to expand"
+    @e1 [disclosure] "Click to expand"
+  "Expanded: False"

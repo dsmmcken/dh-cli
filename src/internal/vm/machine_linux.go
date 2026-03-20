@@ -139,26 +139,33 @@ func BootAndSnapshot(ctx context.Context, cfg *VMConfig, paths *VMPaths, stderr 
 	// Warm up the JVM by running progressively complex scripts through the
 	// full execution pipeline. This triggers C2 JIT compilation of Deephaven's
 	// run_script, table creation, Arrow serialization, and pickle/base64 code
-	// paths. 20 iterations ensures the JVM's tiered compiler promotes all hot
-	// methods to optimized native code. The warmed-up JVM state is captured in
-	// the snapshot, so subsequent restores skip the multi-second JIT cost.
-	fmt.Fprintf(stderr, "Warming up JVM (20 iterations)...\n")
+	// paths. Multiple iterations per phase ensure the JVM's tiered compiler
+	// promotes hot methods to optimized native code. Phases 5-7 exercise the
+	// DH modules that complex dashboards (e.g. iris) depend on, pre-faulting
+	// the JVM memory pages that would otherwise cause multi-second delays on
+	// first use after snapshot restore.
 	warmupScripts := []string{
-		// Phase 1 (iterations 0-4): basic execution path
+		// Phase 1: basic execution path
 		"x = 1\ndel x",
-		// Phase 2 (iterations 5-9): table creation + update (DH core JIT path)
+		// Phase 2: table creation + update (DH core JIT path)
 		"from deephaven import empty_table\nt = empty_table(1).update(['x = i'])\ndel t, empty_table",
-		// Phase 3 (iterations 10-14): wrapper-like pattern (pickle + base64 + IO)
+		// Phase 3: wrapper-like pattern (pickle + base64 + IO)
 		"import io, pickle, base64\nb = io.StringIO()\nb.write('test')\nd = {'stdout': b.getvalue(), 'result_repr': '1'}\nbase64.b64encode(pickle.dumps(d))\ndel io, pickle, base64, b, d",
-		// Phase 4 (iterations 15-19): multi-column table + expressions
+		// Phase 4: multi-column table + expressions
 		"from deephaven import empty_table\nt = empty_table(10).update(['x = i', 'y = x * x', 'z = (double)x / 3.14'])\ndel t, empty_table",
+		// Phase 5: plotly express — exercises the charting pipeline used by dashboards
+		"from deephaven import empty_table\nimport deephaven.plot.express as dpx\nt = empty_table(100).update(['x = i', 'y = Math.sin(x / 10.0)'])\nfig = dpx.line(t, x='x', y='y')\ndel t, fig, dpx, empty_table",
+		// Phase 6: deephaven.ui — exercises the component/widget system
+		"from deephaven import ui\n__dh_el = ui.text('warmup')\ndel __dh_el, ui",
+		// Phase 7: aggregations — exercises the agg framework
+		"from deephaven import empty_table\nfrom deephaven import agg\nt = empty_table(100).update(['g = (int)(i / 10)', 'v = i * 1.5'])\nresult = t.agg_by([agg.sum_('sv = v'), agg.avg('av = v'), agg.count_('cnt')], by=['g'])\ndel t, result, empty_table, agg",
 	}
 
-	for i := 0; i < 20; i++ {
-		script := warmupScripts[i/5]
-		if i/5 >= len(warmupScripts) {
-			script = warmupScripts[len(warmupScripts)-1]
-		}
+	iterPerPhase := 4
+	totalIterations := len(warmupScripts) * iterPerPhase
+	fmt.Fprintf(stderr, "Warming up JVM (%d iterations across %d phases)...\n", totalIterations, len(warmupScripts))
+	for i := 0; i < totalIterations; i++ {
+		script := warmupScripts[i/iterPerPhase]
 		warmupReq := &VsockRequest{Code: script, ShowTables: true, ShowTableMeta: true}
 		warmupResp, err := ExecuteViaVsock(vsockPath, VsockPort, warmupReq)
 		if err != nil {
@@ -173,7 +180,7 @@ func BootAndSnapshot(ctx context.Context, cfg *VMConfig, paths *VMPaths, stderr 
 				runMs = fmt.Sprintf(" (run_script: %vms)", v)
 			}
 		}
-		fmt.Fprintf(stderr, "  warmup %d/20%s\n", i+1, runMs)
+		fmt.Fprintf(stderr, "  warmup %d/%d%s\n", i+1, totalIterations, runMs)
 	}
 
 	// Inflate balloon to reclaim unused guest memory before snapshotting.

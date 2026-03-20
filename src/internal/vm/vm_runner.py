@@ -236,6 +236,141 @@ def handle_request(session, request):
     }
 
 
+def _render_via_subprocess(widget, actions, render_timeout, max_rows,
+                           render_json, stderr_lines, _t_start, verbose=False):
+    """Spawn Node.js oneshot renderer to render a widget."""
+    import subprocess
+    import time as _t
+    import urllib.request
+
+    _dh_url = f"http://127.0.0.1:{DH_SERVER_PORT}"
+
+    # Wait for HTTP endpoint before spawning Node.js.
+    _t3 = _t.time()
+    for _attempt in range(50):  # up to 5 seconds
+        try:
+            urllib.request.urlopen(
+                f"{_dh_url}/jsapi/dh-internal.js",
+                timeout=1,
+            )
+            break
+        except Exception:
+            import time as _delay
+            _delay.sleep(0.1)
+    _t4 = _t.time()
+    if verbose:
+        stderr_lines.append(f"[timing] http ready wait: {int((_t4-_t3)*1000)}ms")
+
+    node_args = [
+        "node",
+        "--no-warnings",
+        "--import", "/opt/render/src/css-loader.mjs",
+        "/opt/render/bin/oneshot.mjs",
+        "--url", _dh_url,
+        "--widget", widget,
+        "--timeout", str(render_timeout),
+        "--rows", str(max_rows),
+    ]
+    if render_json:
+        node_args.append("--json")
+    if verbose:
+        node_args.append("--verbose")
+    node_args.extend(actions)
+
+    # Use V8 compile cache to speed up module loading on repeat runs.
+    node_env = dict(os.environ)
+    node_env["NODE_COMPILE_CACHE"] = "/opt/render/.compile-cache"
+
+    try:
+        proc = subprocess.run(
+            node_args,
+            capture_output=True,
+            text=True,
+            timeout=render_timeout / 1000 + 30,
+            env=node_env,
+        )
+        _t5 = _t.time()
+        if verbose:
+            stderr_lines.append(f"[timing] node.js renderer: {int((_t5-_t4)*1000)}ms")
+            stderr_lines.append(f"[timing] total render: {int((_t5-_t_start)*1000)}ms")
+        timing_str = "\n".join(stderr_lines) + "\n" if stderr_lines else ""
+        # Filter oneshot.mjs timing from stderr unless verbose
+        node_stderr = proc.stderr if verbose else ""
+        return {
+            "exit_code": proc.returncode,
+            "stdout": "",
+            "stderr": timing_str + node_stderr,
+            "error": None if proc.returncode == 0 else proc.stderr,
+            "render_output": proc.stdout,
+        }
+    except subprocess.TimeoutExpired:
+        return {
+            "exit_code": 1,
+            "stdout": "",
+            "stderr": "",
+            "error": "Node.js renderer timed out",
+            "render_output": "",
+        }
+    except Exception as e:
+        return {
+            "exit_code": 1,
+            "stdout": "",
+            "stderr": "",
+            "error": f"Failed to run Node.js renderer: {e}",
+            "render_output": "",
+        }
+
+
+def handle_render_request(session, request):
+    """Process a render request: run script, then invoke Node.js renderer."""
+    import time as _t
+
+    _t_start = _t.time()
+    code = request.get("code", "")
+    widget = request.get("widget", "")
+    actions = request.get("actions", [])
+    render_timeout = request.get("render_timeout", 15000)
+    max_rows = request.get("max_rows", 10)
+    render_json = request.get("render_json", False)
+    verbose = request.get("verbose", False)
+
+    stderr_lines = []
+
+    # Step 1: Run the user's Python script (same as exec)
+    if code.strip():
+        wrapper = build_wrapper(code)
+        _t1 = _t.time()
+        try:
+            session.run_script(wrapper)
+        except Exception as e:
+            return {
+                "exit_code": 1,
+                "stdout": "",
+                "stderr": "",
+                "error": str(e),
+                "render_output": "",
+            }
+        _t2 = _t.time()
+        if verbose:
+            stderr_lines.append(f"[timing] script execution: {int((_t2-_t1)*1000)}ms")
+
+        result = read_result_file()
+        if result.get("error"):
+            return {
+                "exit_code": 1,
+                "stdout": result.get("stdout", ""),
+                "stderr": result.get("stderr", ""),
+                "error": result["error"],
+                "render_output": "",
+            }
+
+    # Step 2: Invoke Node.js oneshot renderer.
+    return _render_via_subprocess(
+        widget, actions, render_timeout, max_rows, render_json,
+        stderr_lines, _t_start, verbose,
+    )
+
+
 # --- HTTP proxy (vsock → TCP bridge for web UI) ---
 
 def _bridge(src, dst):
@@ -319,7 +454,10 @@ def serve_forever(session):
                 continue
 
             request = json.loads(line)
-            response = handle_request(session, request)
+            if request.get("render", False):
+                response = handle_render_request(session, request)
+            else:
+                response = handle_request(session, request)
             conn.sendall(json.dumps(response).encode("utf-8") + b"\n")
         except Exception:
             try:

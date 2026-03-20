@@ -1,0 +1,5 @@
+[flex]
+  [inline_alert] "Success" "Operation completed."
+  [inline_alert] "Warning" "Check your input."
+  [inline_alert] "Error" "Something went wrong."
+  [inline_alert] "Info" "FYI information."

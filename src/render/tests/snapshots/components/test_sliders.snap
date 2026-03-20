@@ -1,0 +1,5 @@
+[flex]
+  @e1 [slider] "Volume" value="50"
+  "Slider: 50"
+  @e2 [range_slider] "Price Range" value="20 – 80"
+  "Range: {'start': 20, 'end': 80}"

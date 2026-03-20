@@ -1,0 +1,7 @@
+[flex]
+  [heading] "Section 1"
+    @e1 [disclosure] "Section 1"
+  [heading] "Section 2"
+    @e2 [disclosure] "Section 2"
+  [heading] "Section 3"
+    @e3 [disclosure] "Section 3"

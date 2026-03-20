@@ -1,0 +1,3 @@
+[flex]
+  "This component is working"
+  @e1 [button] "Trigger Error"

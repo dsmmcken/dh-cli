@@ -23,3 +23,7 @@ func RestoreFromSnapshot(_ context.Context, _ *VMConfig, _ *VMPaths, _ io.Writer
 }
 
 func DestroyInstance(_ *MachineHandle, _ *InstanceInfo, _ *VMPaths) {}
+
+func ProbeUffd() bool { return false }
+
+func WarmSnapshotPageCacheAsync(_ *VMPaths, _ string) {}

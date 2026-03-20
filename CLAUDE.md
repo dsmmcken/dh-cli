@@ -49,6 +49,62 @@ If no snapshot exists yet, build one first (requires Docker):
 DH_HOME=/workspace/.dh dh vm prepare -v    # ~2-5 min, artifacts persist in /workspace/.dh/
 ```
 
+### Fakeroot workaround for `dh vm prepare`
+
+`dh vm prepare` uses fakeroot to build the ext4 rootfs with correct (root) file ownership. In this sandbox, fakeroot-tcp hangs indefinitely. Workaround: build the rootfs manually by extracting the Docker image and using `mke2fs -d` directly (files will be owned by UID 1000 instead of root, but init runs as root in the VM so mounts still work):
+
+```bash
+# 1. Docker build (vm prepare does this, or reuse cached image)
+#    The image name is dh-vm-<version>, e.g. dh-vm-41.3
+
+# 2. Export and extract
+docker rm -f dh-vm-export-tmp 2>/dev/null
+docker create --name dh-vm-export-tmp dh-vm-41.3
+docker export -o /tmp/rootfs.tar dh-vm-export-tmp
+docker rm -f dh-vm-export-tmp
+
+mkdir -p /tmp/dh-rootfs && tar xf /tmp/rootfs.tar -C /tmp/dh-rootfs
+
+# 3. Fix merged-usr symlinks (Docker export breaks them)
+for name in lib lib64 bin sbin; do
+    top="/tmp/dh-rootfs/$name"
+    usr="/tmp/dh-rootfs/usr/$name"
+    if [ -d "$top" ] && [ ! -L "$top" ]; then
+        mkdir -p "$usr"
+        cp -a --no-clobber "$top/." "$usr/" 2>/dev/null || true
+        rm -rf "$top" && ln -s "usr/$name" "$top"
+    fi
+done
+rm -f /tmp/dh-rootfs/sbin/init && ln -s /sbin/init.sh /tmp/dh-rootfs/sbin/init
+
+# 4. Create ext4 and write sources hash
+ROOTFS=/workspace/.dh/vm/rootfs/deephaven-41.3.ext4
+mkdir -p /workspace/.dh/vm/rootfs
+mke2fs -t ext4 -d /tmp/dh-rootfs -F -b 4096 "$ROOTFS" 3G
+
+# 5. Get the sources hash from the Go binary (so vm prepare won't rebuild)
+cd src && cat > internal/vm/h_test.go <<'EOF'
+package vm
+import ("fmt";"testing")
+func TestH(t *testing.T) { fmt.Printf("H=%s\n", rootfsSourcesHash()) }
+EOF
+H=$(CGO_ENABLED=0 go test -run TestH -v ./internal/vm/ 2>&1 | grep -o 'H=[a-f0-9]*' | cut -d= -f2)
+rm internal/vm/h_test.go
+echo -n "$H" > "${ROOTFS}.srchash"
+
+# 6. Now vm prepare will skip rootfs build and go straight to boot+snapshot
+DH_HOME=/workspace/.dh dh vm prepare -v
+```
+
+### UFFD for fast VM snapshot restore
+
+VM snapshot restore is **10-30x faster** with UFFD (userfaultfd) enabled. Without it, every memory page triggers a synchronous disk read on first access. The sandbox needs both the sysctl AND seccomp permission:
+
+- **sysctl** (host-level): `sudo sysctl -w vm.unprivileged_userfaultfd=1`
+- **seccomp** (container-level): the `userfaultfd` syscall must be in the allowlist
+
+Check with: `dh doctor | grep UFFD`
+
 ## Go Toolchain Setup
 
 Current Go version: **1.26.0**

@@ -47,9 +47,20 @@ GO_TO_WHEEL_ARGS := $(SRC_DIR) \
 	--readme README.md \
 	--output-dir dist
 
-.PHONY: build build-all test vet clean package package-all install-local uninstall
+RENDER_SRC = src/render
+RENDER_EMBED = src/internal/render/embedded
 
-build:
+.PHONY: build build-all test vet clean package package-all install-local uninstall render-prepare
+
+render-prepare:
+	rm -rf $(RENDER_EMBED)
+	mkdir -p $(RENDER_EMBED)
+	cp $(RENDER_SRC)/package.json $(RENDER_EMBED)/
+	cp $(RENDER_SRC)/package-lock.json $(RENDER_EMBED)/ 2>/dev/null || true
+	cp -r $(RENDER_SRC)/src $(RENDER_EMBED)/
+	cp -r $(RENDER_SRC)/bin $(RENDER_EMBED)/
+
+build: render-prepare
 	CGO_ENABLED=0 go -C $(SRC_DIR) build $(LDFLAGS) -o ../$(BINARY) ./cmd/dh
 
 build-all:

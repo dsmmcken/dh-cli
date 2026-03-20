@@ -1,0 +1,4 @@
+[flex]
+  @e1 [action_menu] "More actions"
+  "Menu action: none"
+  @e2 [action_button] "File Menu"

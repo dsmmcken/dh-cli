@@ -1,0 +1,3 @@
+[flex]
+  @e1 [color_picker] "Pick a color" (vibrant red)
+  "Color: #ff0000"

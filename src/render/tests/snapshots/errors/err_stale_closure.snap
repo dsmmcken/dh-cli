@@ -1,0 +1,5 @@
+[flex]
+  "Count: 0"
+  "Message:"
+  @e1 [button] "Increment"
+  @e2 [button] "Show Count"

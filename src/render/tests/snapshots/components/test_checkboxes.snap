@@ -1,0 +1,23 @@
+[flex]
+  @e1 [checkbox] [unchecked]
+  "Accept terms"
+  "Checked: False"
+  @e2 [checkbox_group] "Options"
+    @e3 [checkbox] [unchecked]
+    "Option 1"
+    @e4 [checkbox] [unchecked]
+    "Option 2"
+    @e5 [checkbox] [unchecked]
+    "Option 3"
+  "Group: []"
+  @e6 [switch] [unchecked]
+  "Dark mode"
+  "Switched: False"
+  @e7 [radio_group] "Radio Group"
+    @e8 [radio]
+    "Option A"
+    @e9 [radio]
+    "Option B"
+    @e10 [radio]
+    "Option C"
+  "Radio: A"

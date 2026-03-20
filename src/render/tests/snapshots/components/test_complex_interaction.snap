@@ -1,0 +1,11 @@
+[flex]
+  [heading] "Registration Form"
+  @e1 [text_field] "Your Name" value=""
+  @e2 [picker] "Favorite Color" (4 options)
+  @e3 [checkbox] [unchecked]
+  "I agree to terms"
+  [flex]
+    @e4 [button] "Submit"
+    @e5 [button] "Reset"
+  "Result:"
+  "Submitted: False"

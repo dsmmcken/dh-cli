@@ -46,6 +46,10 @@ htmlcov/
 # DH runtime artifacts (VM snapshots, firecracker, rootfs)
 .dh/
 
+# Render runtime
+src/render/node_modules/
+src/internal/render/embedded/
+
 # OS
 .DS_Store
 Thumbs.db

@@ -1,0 +1,8 @@
+[flex]
+  [meter] "Storage" 75%
+  [progressbar] "Upload Progress35%"
+    "Upload Progress"
+    "35%"
+  [progress_circle] "Loading" 60%
+  @e1 [slider] "Set Progress" value="35"
+  "Progress: 35%"

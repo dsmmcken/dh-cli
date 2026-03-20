@@ -1,0 +1,39 @@
+{
+  "name": "dh-render-test",
+  "version": "0.1.0",
+  "description": "Test Deephaven UI components with real data in Node.js using jsdom and react-testing-library",
+  "type": "module",
+  "main": "src/index.mjs",
+  "scripts": {
+    "test": "vitest run --project unit --project cli",
+    "test:all": "vitest run",
+    "test:watch": "vitest --project unit --project cli",
+    "test:unit": "vitest run --project unit",
+    "test:cli": "vitest run --project cli",
+    "test:integration": "vitest run --project integration",
+    "test:snapshots": "vitest run --project snapshots",
+    "test:snapshots:update": "vitest run --project snapshots --update",
+    "test:real": "node --import ./src/css-loader.mjs tests/test_real_components.mjs",
+    "postinstall": "node src/patch-bundle.mjs",
+    "diagnose": "node bin/dh-diagnose.mjs"
+  },
+  "dependencies": {
+    "@deephaven/js-plugin-ui": "^0.33.0",
+    "@deephaven/jsapi-nodejs": "^1.15.0",
+    "@deephaven/jsapi-types": "^41.3.0",
+    "@deephaven/jsapi-utils": "^1.12.1",
+    "@testing-library/react": "^16.3.0",
+    "fast-json-patch": "^3.1.1",
+    "jsdom": "^26.1.0",
+    "json-rpc-2.0": "^1.7.1",
+    "lodash-es": "^4.17.23",
+    "monaco-editor": "^0.55.1",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-redux": "^7.2.9",
+    "redux": "^4.2.1"
+  },
+  "devDependencies": {
+    "vitest": "^3.1.1"
+  }
+}

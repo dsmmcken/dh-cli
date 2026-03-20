@@ -1,0 +1,47 @@
+[dashboard]
+  [column]
+    [row]
+      [panel] "About"
+        [markdown] "Iris Dashboard
+Explore the Iris dataset with deephaven.ui
+
+The data powering this dashboard is simulated Iris data
+Chart"
+      [stack]
+        [panel] "Average"
+          [Table] 3 rows, 5 columns
+            @e1 [button] "Expand table"
+        [panel] "Max"
+          [Table] 3 rows, 5 columns
+            @e2 [button] "Expand table"
+        [panel] "Min" [active]
+          [Table] 3 rows, 5 columns
+            @e3 [button] "Expand table"
+    [row]
+      [panel] "Sepal Panel"
+        [flex]
+          "SepalLength vs. SepalWidth By Species Panel"
+          [tablist]
+            @e4 [tab] "Sepal Length vs. Sepal Width"
+            @e5 [tab] "Sepal Length Histogram"
+            @e6 [tab] "Sepal Width Histogram"
+          [tabpanel]
+            [flex]
+              [UITable] (Table) 150 rows, 7 columns
+                "reverse: true"
+                "frontColumns: Timestamp, Species"
+                "hiddenColumns: PetalLength, PetalWidth, SpeciesID"
+                "density: compact"
+                "handlers: onRowDoublePress"
+                @e7 [button] "Expand table"
+              [Figure] scatter | 3 traces
+                "x: SepalLength"
+                "y: SepalWidth"
+                "scatter "setosa""
+                "scatter "versicolor""
+                "scatter "virginica""
+                @e8 [button] "Expand figure"
+      [panel] "Investigate Species"
+        [flex]
+          @e9 [picker] "Current Species" (3 options)
+          [illustrated_message] icon="filter" "Species required" "Select a species to display filtered table and chart."

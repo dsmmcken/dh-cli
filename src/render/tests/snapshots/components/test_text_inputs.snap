@@ -1,0 +1,11 @@
+[flex]
+  @e1 [text_field] "Text Field" value="hello"
+  "Text: hello"
+  @e2 [text_area] "Text Area" value="multi
+line"
+  "Area: multi
+line"
+  @e3 [search_field] "Search" value=""
+  "Search:"
+  @e4 [number_field] "Number" value="42"
+  "Number: 42"
