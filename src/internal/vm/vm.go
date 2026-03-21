@@ -18,7 +18,7 @@ const (
 	DefaultMemSizeMiB = 4608 // 4.5 GiB — room for 4g JVM heap + OS + Python
 
 	// DefaultVCPUCount is the default number of vCPUs.
-	DefaultVCPUCount = 2
+	DefaultVCPUCount = 4
 
 	// FileServerPort is the vsock port for the host file server.
 	// The guest LD_PRELOAD library connects to CID=2:FileServerPort to fetch

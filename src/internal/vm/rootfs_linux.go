@@ -77,6 +77,13 @@ mount -t sysfs sysfs /sys
 mount -t devtmpfs devtmpfs /dev
 mount -t tmpfs tmpfs /tmp
 
+# Mount tmpfs over the JVM's compilation cache so it survives snapshot restore
+# with ReadOnlyDisk=true (pool VMs share the ext4 image read-only). The tmpfs
+# is populated during warmup and captured in the snapshot memory, so restored
+# pool VMs have both a writable cache AND the warm compiled classes.
+mkdir -p /root/.cache/deephaven
+mount -t tmpfs tmpfs /root/.cache/deephaven
+
 # Ensure loopback interface is up (required for localhost TCP after snapshot restore)
 ip link set lo up
 

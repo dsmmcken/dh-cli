@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"syscall"
 	"time"
 
 	firecracker "github.com/firecracker-microvm/firecracker-go-sdk"
@@ -156,6 +157,18 @@ func (p *Pool) fillOne(ctx context.Context) error {
 	if err != nil {
 		os.RemoveAll(instanceDir)
 		return fmt.Errorf("restoring snapshot: %w", err)
+	}
+
+	// Mount tmpfs over the JVM's compilation cache so queries can be compiled
+	// even with ReadOnlyDisk=true. New snapshots with the updated init.sh do
+	// this at boot time; this handles older snapshots where the cache lives on
+	// the ext4 root. The mount is a no-op if the path doesn't exist or is
+	// already tmpfs-backed.
+	initReq := &VsockRequest{
+		Code: `import os; os.system("mount -t tmpfs tmpfs /root/.cache/deephaven 2>/dev/null")`,
+	}
+	if _, err := ExecuteViaVsock(vsockPath, VsockPort, initReq); err != nil {
+		p.log("Warning: init request for %s failed: %v", instanceID, err)
 	}
 
 	pvm := &poolVM{
@@ -331,9 +344,9 @@ func (p *Pool) handleExec(ctx context.Context, conn net.Conn, req *PoolRequest) 
 }
 
 // handleCheckout dequeues a warm VM and transfers ownership to the caller.
-// The pool closes the UFFD handler (page population completes before the VM
-// enters the ready queue) but does NOT destroy the VM. The caller is
-// responsible for cleanup via DestroyCheckedOutVM.
+// The UFFD lazy fault handler must stay alive until the VM process exits —
+// not all pages are eagerly populated, so the handler still serves faults
+// on demand. The caller is responsible for VM cleanup via DestroyCheckedOutVM.
 func (p *Pool) handleCheckout(conn net.Conn) {
 	p.mu.Lock()
 	p.lastReq = time.Now()
@@ -347,9 +360,12 @@ func (p *Pool) handleCheckout(conn net.Conn) {
 		return
 	}
 
-	// Close UFFD handler — page population is already complete.
+	// Keep UFFD handler alive — the lazy fault handler must continue serving
+	// page faults until the VM process exits. Closing it prematurely causes
+	// the guest to see zero pages instead of snapshot data, crashing the VM.
 	if pvm.uffdCloser != nil {
-		pvm.uffdCloser.Close()
+		p.wg.Add(1)
+		go p.deferUffdClose(pvm.info.PID, pvm.uffdCloser)
 	}
 
 	checkout := &CheckoutInfo{
@@ -368,6 +384,30 @@ func (p *Pool) handleCheckout(conn net.Conn) {
 		Checkout: checkout,
 		Version:  p.version,
 	})
+}
+
+// deferUffdClose keeps the UFFD lazy fault handler alive until the VM process
+// exits. In hybrid UFFD mode, only the first ~256MB of snapshot pages are
+// eagerly copied before the VM resumes — the rest are served lazily on demand.
+// If the handler is closed prematurely, those unpopulated pages resolve to
+// zeros (anonymous MAP_PRIVATE fallback), corrupting the guest's memory.
+func (p *Pool) deferUffdClose(pid int, closer io.Closer) {
+	defer p.wg.Done()
+	defer closer.Close()
+
+	ticker := time.NewTicker(200 * time.Millisecond)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-p.done:
+			return
+		case <-ticker.C:
+			if syscall.Kill(pid, 0) != nil {
+				return // VM process exited
+			}
+		}
+	}
 }
 
 // handleStatus returns the current pool state.

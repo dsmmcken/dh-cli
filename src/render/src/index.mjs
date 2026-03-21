@@ -181,10 +181,12 @@ class TestClient {
     async render(widgetName, options = {}) {
         const { widgetType, timeout = 10000, checkFn } = options;
 
-        // Detect widget type if not specified
+        // Detect widget type if not specified.
+        // Use the render timeout for widget lookup — with overlapped execution
+        // the script may still be running when Node.js finishes session.open.
         let type = widgetType;
         if (!type) {
-            const definition = await this._widgetClient.fetchVariableDefinition(widgetName, 3000);
+            const definition = await this._widgetClient.fetchVariableDefinition(widgetName, timeout);
             if (definition?.type) {
                 type = definition.type;
             }

@@ -388,8 +388,24 @@ def _render_via_subprocess(widget, actions, render_timeout, max_rows,
 
 
 def handle_render_request(session, request):
-    """Process a render request: run script, then invoke Node.js renderer."""
+    """Process a render request: run script + Node.js renderer in parallel.
+
+    The Node.js renderer's session.open (JSAPI load + WebSocket connect) is
+    independent of the script — it only needs the Deephaven server running.
+    By starting Node.js before the script, these two phases overlap, saving
+    ~3.5s per render.
+
+    Timeline:
+      T=0   Start Node.js (Popen, non-blocking)
+      T=0   Start Python script (blocks ~3.7s)
+      T≈3.5 Node.js session.open finishes (JSAPI + WS connected)
+      T≈3.7 Script finishes → widget exists on server
+      T≈3.7 Node.js session.render starts (widget lookup + React render)
+      T≈5.1 Node.js done → output collected
+    """
+    import subprocess
     import time as _t
+    import urllib.request
 
     _t_start = _t.time()
     code = request.get("code", "")
@@ -401,27 +417,77 @@ def handle_render_request(session, request):
     verbose = request.get("verbose", False)
 
     stderr_lines = []
+    _dh_url = f"http://127.0.0.1:{DH_SERVER_PORT}"
 
-    # Step 1: Run the user's Python script (same as exec)
+    # --- Phase 1: Start Node.js renderer (non-blocking) ---
+    # Wait for HTTP endpoint first (fast in pool VMs, ~10ms).
+    _t_http = _t.time()
+    for _attempt in range(50):  # up to 5 seconds
+        try:
+            urllib.request.urlopen(f"{_dh_url}/jsapi/dh-internal.js", timeout=1)
+            break
+        except Exception:
+            import time as _delay
+            _delay.sleep(0.1)
+    _t_http_done = _t.time()
+    if verbose:
+        stderr_lines.append(f"[timing] http ready wait: {int((_t_http_done-_t_http)*1000)}ms")
+
+    node_args = [
+        "node", "--no-warnings",
+        "--import", "/opt/render/src/css-loader.mjs",
+        "/opt/render/bin/oneshot.mjs",
+        "--url", _dh_url,
+        "--widget", widget,
+        "--timeout", str(render_timeout),
+        "--rows", str(max_rows),
+    ]
+    if render_json:
+        node_args.append("--json")
+    if verbose:
+        node_args.append("--verbose")
+    node_args.extend(actions)
+
+    node_env = dict(os.environ)
+    node_env["NODE_COMPILE_CACHE"] = "/opt/render/.compile-cache"
+
+    proc = subprocess.Popen(
+        node_args,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        env=node_env,
+    )
+    _t_node_start = _t.time()
+
+    # --- Phase 2: Run Python script (overlapped with Node.js session.open) ---
+    script_error = None
     if code.strip():
         wrapper = build_wrapper(code)
-        _t1 = _t.time()
+        _t_script_start = _t.time()
         try:
             session.run_script(wrapper)
         except Exception as e:
+            script_error = str(e)
+        _t_script_done = _t.time()
+        if verbose:
+            stderr_lines.append(f"[timing] script execution: {int((_t_script_done-_t_script_start)*1000)}ms")
+
+        if script_error:
+            proc.kill()
+            proc.wait()
             return {
                 "exit_code": 1,
                 "stdout": "",
                 "stderr": "",
-                "error": str(e),
+                "error": script_error,
                 "render_output": "",
             }
-        _t2 = _t.time()
-        if verbose:
-            stderr_lines.append(f"[timing] script execution: {int((_t2-_t1)*1000)}ms")
 
         result = read_result_file()
         if result.get("error"):
+            proc.kill()
+            proc.wait()
             return {
                 "exit_code": 1,
                 "stdout": result.get("stdout", ""),
@@ -430,15 +496,36 @@ def handle_render_request(session, request):
                 "render_output": "",
             }
 
-    # Step 2: Invoke Node.js renderer via subprocess.
-    # The render daemon's jsdom/React state does not survive snapshot restore
-    # (modules cached in V8 heap reference stale DOM objects), so we always use
-    # a fresh subprocess. The compile cache (NODE_COMPILE_CACHE) and JSAPI file
-    # cache on disk still give the subprocess a significant speed boost.
-    return _render_via_subprocess(
-        widget, actions, render_timeout, max_rows, render_json,
-        stderr_lines, _t_start, verbose,
-    )
+    # --- Phase 3: Wait for Node.js to finish rendering ---
+    try:
+        node_stdout, node_stderr = proc.communicate(
+            timeout=render_timeout / 1000 + 30
+        )
+    except subprocess.TimeoutExpired:
+        proc.kill()
+        proc.wait()
+        return {
+            "exit_code": 1,
+            "stdout": "",
+            "stderr": "",
+            "error": "Node.js renderer timed out",
+            "render_output": "",
+        }
+
+    _t_done = _t.time()
+    if verbose:
+        stderr_lines.append(f"[timing] node.js renderer: {int((_t_done-_t_node_start)*1000)}ms")
+        stderr_lines.append(f"[timing] total render: {int((_t_done-_t_start)*1000)}ms")
+    timing_str = "\n".join(stderr_lines) + "\n" if stderr_lines else ""
+    node_stderr_out = node_stderr if verbose else ""
+
+    return {
+        "exit_code": proc.returncode,
+        "stdout": "",
+        "stderr": timing_str + node_stderr_out,
+        "error": None if proc.returncode == 0 else node_stderr,
+        "render_output": node_stdout,
+    }
 
 
 # --- HTTP proxy (vsock → TCP bridge for web UI) ---
@@ -497,10 +584,49 @@ def serve_http_proxy(dh_port):
             continue
 
 
+# --- JVM cache writability ---
+
+def _ensure_writable_jvm_cache():
+    """Mount tmpfs over the JVM's compilation cache if the root fs is read-only.
+
+    Pool VMs share the ext4 disk image as read-only, so the JVM's query
+    compiler can't write compiled class files. This mounts tmpfs over the
+    cache directory so the JVM can compile queries. The original cache files
+    (from boot/warmup) are hidden, but the JVM recompiles on demand.
+
+    New snapshots built with the updated init.sh already mount this tmpfs
+    at boot time, so this function becomes a no-op for them.
+    """
+    cache_dir = "/root/.cache/deephaven"
+    if not os.path.isdir(cache_dir):
+        return
+
+    import subprocess
+    # Check if already on tmpfs (e.g., init.sh already mounted it)
+    result = subprocess.run(
+        ["findmnt", "-n", "-o", "FSTYPE", "-T", cache_dir],
+        capture_output=True, text=True)
+    if "tmpfs" in result.stdout:
+        return
+
+    # Check if root fs is read-only
+    result = subprocess.run(
+        ["findmnt", "-n", "-o", "OPTIONS", "-T", cache_dir],
+        capture_output=True, text=True)
+    if "ro" not in result.stdout.split(","):
+        return  # Root is read-write, no action needed
+
+    subprocess.run(
+        ["mount", "-t", "tmpfs", "tmpfs", cache_dir],
+        capture_output=True)
+
+
 # --- Vsock server ---
 
 def serve_forever(session):
     """Listen on vsock, handle one request per connection."""
+    _ensure_writable_jvm_cache()
+
     vs = socket.socket(socket.AF_VSOCK, socket.SOCK_STREAM)
     vs.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     vs.bind((VMADDR_CID_ANY, VSOCK_PORT))
