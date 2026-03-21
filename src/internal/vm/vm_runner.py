@@ -430,17 +430,11 @@ def handle_render_request(session, request):
                 "render_output": "",
             }
 
-    # Step 2: Invoke Node.js renderer — prefer daemon (fast) over subprocess (cold start).
-    result = _render_via_daemon(
-        widget, actions, render_timeout, max_rows, render_json,
-        stderr_lines, _t_start, verbose,
-    )
-    if result is not None:
-        return result
-
-    # Daemon unavailable — fall back to subprocess.
-    if verbose:
-        stderr_lines.append("[timing] render daemon unavailable, falling back to subprocess")
+    # Step 2: Invoke Node.js renderer via subprocess.
+    # The render daemon's jsdom/React state does not survive snapshot restore
+    # (modules cached in V8 heap reference stale DOM objects), so we always use
+    # a fresh subprocess. The compile cache (NODE_COMPILE_CACHE) and JSAPI file
+    # cache on disk still give the subprocess a significant speed boost.
     return _render_via_subprocess(
         widget, actions, render_timeout, max_rows, render_json,
         stderr_lines, _t_start, verbose,

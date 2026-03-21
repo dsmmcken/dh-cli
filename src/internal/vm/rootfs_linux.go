@@ -147,21 +147,6 @@ echo "RUNNER_READY" > /dev/ttyS0 2>/dev/null || true
 NODE_COMPILE_CACHE=/opt/render/.compile-cache \
   node --no-warnings /opt/render/bin/warmup.mjs 2>/dev/ttyS0 || true
 
-# Start the persistent render daemon. It pre-loads all Node.js modules and
-# Deephaven JSAPI at startup (~14s), then listens on a Unix socket for render
-# requests. This process is captured in the VM snapshot, so after restore the
-# daemon is immediately available with zero cold-start cost (~33ms per render
-# vs ~4s for the subprocess fallback).
-NODE_COMPILE_CACHE=/opt/render/.compile-cache \
-  node --no-warnings --import /opt/render/src/css-loader.mjs \
-  /opt/render/bin/render-daemon.mjs 2>/dev/ttyS0 &
-
-# Wait for daemon to signal readiness (writes /tmp/render_daemon_ready).
-for _i in $(seq 1 300); do
-    [ -f /tmp/render_daemon_ready ] && break
-    sleep 0.1
-done
-
 echo "RENDER_WARM" > /dev/ttyS0 2>/dev/null || true
 
 # Keep init alive
