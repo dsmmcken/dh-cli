@@ -160,15 +160,32 @@ func (p *Pool) fillOne(ctx context.Context) error {
 	}
 
 	// Mount tmpfs over the JVM's compilation cache so queries can be compiled
-	// even with ReadOnlyDisk=true. New snapshots with the updated init.sh do
-	// this at boot time; this handles older snapshots where the cache lives on
-	// the ext4 root. The mount is a no-op if the path doesn't exist or is
-	// already tmpfs-backed.
+	// even with ReadOnlyDisk=true, and start the Node.js render daemon in
+	// the background. The daemon pre-loads all modules and JSAPI so render
+	// requests complete in ~1.2s instead of ~6s (fresh subprocess).
 	initReq := &VsockRequest{
-		Code: `import os; os.system("mount -t tmpfs tmpfs /root/.cache/deephaven 2>/dev/null")`,
+		Code: `import os
+os.system("mount -t tmpfs tmpfs /root/.cache/deephaven 2>/dev/null")
+os.system("NODE_COMPILE_CACHE=/opt/render/.compile-cache node --no-warnings --import /opt/render/src/css-loader.mjs /opt/render/bin/render-daemon.mjs </dev/null >/dev/null 2>/dev/null &")
+`,
 	}
 	if _, err := ExecuteViaVsock(vsockPath, VsockPort, initReq); err != nil {
 		p.log("Warning: init request for %s failed: %v", instanceID, err)
+	}
+
+	// Wait for the render daemon to finish loading (~2-3s). The daemon writes
+	// /tmp/render_daemon_ready when it's listening on its socket. Renders fall
+	// back to subprocess if the daemon isn't ready, so this is best-effort.
+	for i := 0; i < 50; i++ { // up to 10s
+		probe := &VsockRequest{
+			Code: `import os, pathlib; pathlib.Path("/tmp/__dh_result.json").write_text('{"stdout":"' + ("1" if os.path.exists("/tmp/render_daemon_ready") else "0") + '"}')`,
+		}
+		resp, err := ExecuteViaVsock(vsockPath, VsockPort, probe)
+		if err == nil && resp != nil && resp.Stdout == "1" {
+			p.log("Render daemon ready for %s", instanceID)
+			break
+		}
+		time.Sleep(200 * time.Millisecond)
 	}
 
 	pvm := &poolVM{

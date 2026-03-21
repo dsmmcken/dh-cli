@@ -261,6 +261,7 @@ def _render_via_daemon(widget, actions, render_timeout, max_rows,
         "timeout": render_timeout,
         "rows": max_rows,
         "json": render_json,
+        "verbose": verbose,
     }) + "\n"
 
     try:
@@ -388,24 +389,15 @@ def _render_via_subprocess(widget, actions, render_timeout, max_rows,
 
 
 def handle_render_request(session, request):
-    """Process a render request: run script + Node.js renderer in parallel.
+    """Process a render request: run script, then render via daemon or subprocess.
 
-    The Node.js renderer's session.open (JSAPI load + WebSocket connect) is
-    independent of the script — it only needs the Deephaven server running.
-    By starting Node.js before the script, these two phases overlap, saving
-    ~3.5s per render.
-
-    Timeline:
-      T=0   Start Node.js (Popen, non-blocking)
-      T=0   Start Python script (blocks ~3.7s)
-      T≈3.5 Node.js session.open finishes (JSAPI + WS connected)
-      T≈3.7 Script finishes → widget exists on server
-      T≈3.7 Node.js session.render starts (widget lookup + React render)
-      T≈5.1 Node.js done → output collected
+    Pool VMs have a pre-started render daemon (render-daemon.mjs) that keeps
+    Node.js modules and JSAPI loaded in memory. Rendering through the daemon
+    takes ~1.2s vs ~6s for a fresh subprocess. Falls back to the overlapped
+    subprocess approach if the daemon isn't available (cold renders, older
+    snapshots).
     """
-    import subprocess
     import time as _t
-    import urllib.request
 
     _t_start = _t.time()
     code = request.get("code", "")
@@ -417,77 +409,28 @@ def handle_render_request(session, request):
     verbose = request.get("verbose", False)
 
     stderr_lines = []
-    _dh_url = f"http://127.0.0.1:{DH_SERVER_PORT}"
 
-    # --- Phase 1: Start Node.js renderer (non-blocking) ---
-    # Wait for HTTP endpoint first (fast in pool VMs, ~10ms).
-    _t_http = _t.time()
-    for _attempt in range(50):  # up to 5 seconds
-        try:
-            urllib.request.urlopen(f"{_dh_url}/jsapi/dh-internal.js", timeout=1)
-            break
-        except Exception:
-            import time as _delay
-            _delay.sleep(0.1)
-    _t_http_done = _t.time()
-    if verbose:
-        stderr_lines.append(f"[timing] http ready wait: {int((_t_http_done-_t_http)*1000)}ms")
-
-    node_args = [
-        "node", "--no-warnings",
-        "--import", "/opt/render/src/css-loader.mjs",
-        "/opt/render/bin/oneshot.mjs",
-        "--url", _dh_url,
-        "--widget", widget,
-        "--timeout", str(render_timeout),
-        "--rows", str(max_rows),
-    ]
-    if render_json:
-        node_args.append("--json")
-    if verbose:
-        node_args.append("--verbose")
-    node_args.extend(actions)
-
-    node_env = dict(os.environ)
-    node_env["NODE_COMPILE_CACHE"] = "/opt/render/.compile-cache"
-
-    proc = subprocess.Popen(
-        node_args,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-        env=node_env,
-    )
-    _t_node_start = _t.time()
-
-    # --- Phase 2: Run Python script (overlapped with Node.js session.open) ---
-    script_error = None
+    # Step 1: Run the user's Python script — must complete before rendering
+    # so the widget exists on the server.
     if code.strip():
         wrapper = build_wrapper(code)
-        _t_script_start = _t.time()
+        _t1 = _t.time()
         try:
             session.run_script(wrapper)
         except Exception as e:
-            script_error = str(e)
-        _t_script_done = _t.time()
-        if verbose:
-            stderr_lines.append(f"[timing] script execution: {int((_t_script_done-_t_script_start)*1000)}ms")
-
-        if script_error:
-            proc.kill()
-            proc.wait()
             return {
                 "exit_code": 1,
                 "stdout": "",
                 "stderr": "",
-                "error": script_error,
+                "error": str(e),
                 "render_output": "",
             }
+        _t2 = _t.time()
+        if verbose:
+            stderr_lines.append(f"[timing] script execution: {int((_t2-_t1)*1000)}ms")
 
         result = read_result_file()
         if result.get("error"):
-            proc.kill()
-            proc.wait()
             return {
                 "exit_code": 1,
                 "stdout": result.get("stdout", ""),
@@ -496,36 +439,23 @@ def handle_render_request(session, request):
                 "render_output": "",
             }
 
-    # --- Phase 3: Wait for Node.js to finish rendering ---
-    try:
-        node_stdout, node_stderr = proc.communicate(
-            timeout=render_timeout / 1000 + 30
-        )
-    except subprocess.TimeoutExpired:
-        proc.kill()
-        proc.wait()
-        return {
-            "exit_code": 1,
-            "stdout": "",
-            "stderr": "",
-            "error": "Node.js renderer timed out",
-            "render_output": "",
-        }
+    # Step 2: Try the render daemon (fast path, ~1.2s).
+    # Pool VMs start render-daemon.mjs during fillOne. The daemon has all
+    # modules pre-loaded so createTestClient is ~200ms, not ~3600ms.
+    daemon_result = _render_via_daemon(
+        widget, actions, render_timeout, max_rows,
+        render_json, stderr_lines, _t_start, verbose,
+    )
+    if daemon_result is not None:
+        return daemon_result
 
-    _t_done = _t.time()
-    if verbose:
-        stderr_lines.append(f"[timing] node.js renderer: {int((_t_done-_t_node_start)*1000)}ms")
-        stderr_lines.append(f"[timing] total render: {int((_t_done-_t_start)*1000)}ms")
-    timing_str = "\n".join(stderr_lines) + "\n" if stderr_lines else ""
-    node_stderr_out = node_stderr if verbose else ""
-
-    return {
-        "exit_code": proc.returncode,
-        "stdout": "",
-        "stderr": timing_str + node_stderr_out,
-        "error": None if proc.returncode == 0 else node_stderr,
-        "render_output": node_stdout,
-    }
+    # Step 3: Fall back to subprocess (cold renders, daemon not ready).
+    # Uses overlapped execution: start Node.js before waiting, so session.open
+    # overlaps with any remaining setup time.
+    return _render_via_subprocess(
+        widget, actions, render_timeout, max_rows, render_json,
+        stderr_lines, _t_start, verbose,
+    )
 
 
 # --- HTTP proxy (vsock → TCP bridge for web UI) ---

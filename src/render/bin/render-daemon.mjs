@@ -127,6 +127,7 @@ async function handleRender(request) {
         widget, widget_type: widgetType,
         actions: actionArgv = [],
         timeout = 15000, rows = 10, json: jsonMode = false,
+        verbose: verboseMode = false,
     } = request;
 
     const stderrParts = [];
@@ -149,7 +150,9 @@ async function handleRender(request) {
     stderrParts.push(`[timing] connect: ${Date.now() - _tConnect}ms`);
 
     try {
-        const renderResult = await session.render(widget, widgetType || 'deephaven.ui.Element', timeout);
+        // Pass widgetType as-is (may be undefined) — DaemonSession → TestClient
+        // will auto-detect the type via fetchVariableDefinition if not specified.
+        const renderResult = await session.render(widget, widgetType, timeout);
         if (!renderResult.ok) {
             return {
                 exit_code: 1, stdout: '', stderr: '',
