@@ -3,10 +3,14 @@
 package cmd
 
 import (
+	"errors"
 	"fmt"
+	"io"
 	"os"
+	"os/exec"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/dsmmcken/dh-cli/src/internal/config"
@@ -45,7 +49,7 @@ func runRenderVM(cmd *cobra.Command, args []string, diagnose bool) error {
 
 	// Try pool checkout first (fast path)
 	var info *vm.InstanceInfo
-	if checkout := tryRenderPoolCheckout(cmd, version); checkout != nil {
+	if checkout := tryRenderPoolCheckout(cmd, version, dhHome); checkout != nil {
 		version = checkout.Version
 		info = &vm.InstanceInfo{
 			ID:            checkout.InstanceID,
@@ -176,14 +180,18 @@ func runRenderVM(cmd *cobra.Command, args []string, diagnose bool) error {
 }
 
 // tryRenderPoolCheckout attempts to check out a warm VM from the pool daemon.
-func tryRenderPoolCheckout(cmd *cobra.Command, version string) *vm.CheckoutInfo {
-	if !renderPoolFlag {
+// Like exec, pool is tried by default unless DH_VM_POOL=0 is set.
+// If the pool daemon isn't running, it auto-starts one for next time.
+func tryRenderPoolCheckout(cmd *cobra.Command, version, dhHome string) *vm.CheckoutInfo {
+	if os.Getenv("DH_VM_POOL") == "0" {
 		return nil
 	}
 
 	checkout, err := vm.PoolCheckout()
 	if err != nil {
-		if output.IsVerbose() {
+		if errors.Is(err, vm.ErrPoolNotRunning) {
+			autoStartRenderPool(dhHome, version, cmd.ErrOrStderr())
+		} else if output.IsVerbose() {
 			fmt.Fprintf(cmd.ErrOrStderr(), "Pool checkout: %v, falling back to cold restore\n", err)
 		}
 		return nil
@@ -199,4 +207,58 @@ func tryRenderPoolCheckout(cmd *cobra.Command, version string) *vm.CheckoutInfo 
 	}
 
 	return checkout
+}
+
+// autoStartRenderPool forks a pool daemon in the background so the next
+// invocation gets a fast pool checkout instead of a cold restore.
+func autoStartRenderPool(dhHome, version string, stderr io.Writer) {
+	snapVersion := version
+	if snapVersion == "" {
+		vmPaths := vm.NewVMPaths(dhHome)
+		snapVersions, err := listSnapshotVersions(vmPaths)
+		if err != nil || len(snapVersions) == 0 {
+			return
+		}
+		snapVersion = snapVersions[0]
+	}
+
+	vmPaths := vm.NewVMPaths(dhHome)
+	if vm.CheckSnapshot(vmPaths, snapVersion) != nil {
+		return
+	}
+
+	if output.IsVerbose() {
+		fmt.Fprintf(stderr, "Auto-starting pool daemon (first render uses cold restore)...\n")
+	}
+
+	exePath, err := os.Executable()
+	if err != nil {
+		return
+	}
+
+	args := []string{"vm", "pool", "start", "--background",
+		"-n", "1",
+		"--idle-timeout", "5m",
+		"--version", snapVersion,
+	}
+	if output.IsVerbose() {
+		args = append(args, "-v")
+	}
+
+	poolCmd := exec.Command(exePath, args...)
+	poolCmd.Env = os.Environ()
+	if dhHome != "" {
+		poolCmd.Env = append(poolCmd.Env, "DH_HOME="+dhHome)
+	}
+	poolCmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+
+	os.MkdirAll(vmPaths.Base, 0o755)
+	logFile, err := os.OpenFile(fmt.Sprintf("%s/pool.log", vmPaths.Base), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+	if err != nil {
+		return
+	}
+	poolCmd.Stdout = logFile
+	poolCmd.Stderr = logFile
+	poolCmd.Start()
+	logFile.Close()
 }

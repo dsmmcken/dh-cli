@@ -153,7 +153,8 @@ NODE_COMPILE_CACHE=/opt/render/.compile-cache \
 # daemon is immediately available with zero cold-start cost (~33ms per render
 # vs ~4s for the subprocess fallback).
 NODE_COMPILE_CACHE=/opt/render/.compile-cache \
-  node --no-warnings /opt/render/bin/render-daemon.mjs 2>/dev/ttyS0 &
+  node --no-warnings --import /opt/render/src/css-loader.mjs \
+  /opt/render/bin/render-daemon.mjs 2>/dev/ttyS0 &
 
 # Wait for daemon to signal readiness (writes /tmp/render_daemon_ready).
 for _i in $(seq 1 300); do
