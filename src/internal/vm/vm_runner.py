@@ -236,6 +236,72 @@ def handle_request(session, request):
     }
 
 
+RENDER_DAEMON_SOCKET = "/tmp/render-daemon.sock"
+
+
+def _render_via_daemon(widget, actions, render_timeout, max_rows,
+                       render_json, stderr_lines, _t_start, verbose=False):
+    """Try to render via the persistent Node.js daemon. Returns None if unavailable."""
+    import time as _t
+
+    if not os.path.exists(RENDER_DAEMON_SOCKET):
+        return None
+
+    try:
+        sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        sock.settimeout(render_timeout / 1000 + 30)
+        sock.connect(RENDER_DAEMON_SOCKET)
+    except Exception:
+        return None
+
+    _t_daemon = _t.time()
+    request = json.dumps({
+        "widget": widget,
+        "actions": actions,
+        "timeout": render_timeout,
+        "rows": max_rows,
+        "json": render_json,
+    }) + "\n"
+
+    try:
+        sock.sendall(request.encode("utf-8"))
+        buf = b""
+        while b"\n" not in buf:
+            chunk = sock.recv(65536)
+            if not chunk:
+                break
+            buf += chunk
+        sock.close()
+    except Exception as e:
+        try:
+            sock.close()
+        except Exception:
+            pass
+        return None
+
+    line = buf.split(b"\n", 1)[0]
+    try:
+        resp = json.loads(line)
+    except Exception:
+        return None
+
+    _t_done = _t.time()
+    if verbose:
+        stderr_lines.append(f"[timing] render daemon: {int((_t_done-_t_daemon)*1000)}ms")
+        stderr_lines.append(f"[timing] total render: {int((_t_done-_t_start)*1000)}ms")
+
+    timing_str = "\n".join(stderr_lines) + "\n" if stderr_lines else ""
+    daemon_stderr = resp.get("stderr", "")
+
+    return {
+        "exit_code": resp.get("exit_code", 1),
+        "stdout": "",
+        "stderr": timing_str + (daemon_stderr if verbose else ""),
+        "error": resp.get("error"),
+        "render_output": resp.get("render_output", ""),
+    }
+
+
 def _render_via_subprocess(widget, actions, render_timeout, max_rows,
                            render_json, stderr_lines, _t_start, verbose=False):
     """Spawn Node.js oneshot renderer to render a widget."""
@@ -364,7 +430,17 @@ def handle_render_request(session, request):
                 "render_output": "",
             }
 
-    # Step 2: Invoke Node.js oneshot renderer.
+    # Step 2: Invoke Node.js renderer — prefer daemon (fast) over subprocess (cold start).
+    result = _render_via_daemon(
+        widget, actions, render_timeout, max_rows, render_json,
+        stderr_lines, _t_start, verbose,
+    )
+    if result is not None:
+        return result
+
+    # Daemon unavailable — fall back to subprocess.
+    if verbose:
+        stderr_lines.append("[timing] render daemon unavailable, falling back to subprocess")
     return _render_via_subprocess(
         widget, actions, render_timeout, max_rows, render_json,
         stderr_lines, _t_start, verbose,

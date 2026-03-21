@@ -24,34 +24,28 @@ let _reduxStore = null;
 
 /**
  * Load the provider components. Must be called after jsdom globals are installed.
+ * Imports are parallelized in dependency-safe groups to avoid the Node.js ESM
+ * race condition (modules that share the same dependency graph can't be
+ * Promise.all'd together on Node 24+).
  */
 export async function loadProviders() {
     if (_ThemeProvider) return;
 
-    const components = await import('@deephaven/components');
+    // Group 1: independent leaf packages (no shared transitive deps)
+    const [components, plugin, bootstrap, reactRedux, redux] = await Promise.all([
+        import('@deephaven/components'),
+        import('@deephaven/plugin'),
+        import('@deephaven/jsapi-bootstrap'),
+        import('react-redux'),
+        import('redux'),
+    ]);
+
     _ThemeProvider = components.ThemeProvider;
-
-    const plugin = await import('@deephaven/plugin');
     _PluginsContext = plugin.PluginsContext;
-
-    const bootstrap = await import('@deephaven/jsapi-bootstrap');
     _ApiContext = bootstrap.ApiContext;
     _ObjectFetchManagerContext = bootstrap.ObjectFetchManagerContext;
-
-    const dashboard = await import('@deephaven/dashboard');
-    _LayoutManagerContext = dashboard.LayoutManagerContext;
-
-    // PortalPanelManager listens for GoldenLayout portal events and provides
-    // PortalPanelManagerContext for ReactPanel to portal content into panels.
-    const pluginUi = await import('@deephaven/js-plugin-ui');
-    _PortalPanelManager = pluginUi.PortalPanelManager;
-
-    // Redux Provider — required by DH components that call useSelector(getSettings),
-    // e.g. the Picker component from @deephaven/js-plugin-ui.
-    const reactRedux = await import('react-redux');
     _ReduxProvider = reactRedux.Provider;
 
-    const redux = await import('redux');
     _reduxStore = redux.createStore(() => ({
         workspace: { data: { settings: {} } },
         defaultWorkspaceSettings: {},
@@ -67,6 +61,14 @@ export async function loadProviders() {
         dashboardData: {},
         serverConfigValues: {},
     }));
+
+    // Group 2: @deephaven/dashboard (depends on @deephaven/components)
+    const dashboard = await import('@deephaven/dashboard');
+    _LayoutManagerContext = dashboard.LayoutManagerContext;
+
+    // Group 3: @deephaven/js-plugin-ui (depends on dashboard + components)
+    const pluginUi = await import('@deephaven/js-plugin-ui');
+    _PortalPanelManager = pluginUi.PortalPanelManager;
 }
 
 /**

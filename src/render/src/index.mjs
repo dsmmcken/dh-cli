@@ -98,16 +98,17 @@ export async function createTestClient(serverUrl, options = {}) {
     const globals = installJsdomGlobals(dom);
     globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
-    // Load DH providers and GoldenLayout (must happen after globals)
-    await loadProviders();
-    await loadGoldenLayout();
+    // Load providers and GoldenLayout in parallel (both need jsdom globals).
+    // ReactDOM can also load in parallel — it's independent.
+    const [, , ReactDOM] = await Promise.all([
+        loadProviders(),
+        loadGoldenLayout(),
+        import('react-dom/client'),
+    ]);
 
-    // Import WidgetHandler (must happen after globals and providers)
+    // WidgetHandler must load after providers (shares @deephaven/dashboard dep graph)
     const pluginUi = await import('@deephaven/js-plugin-ui');
     const WidgetHandler = pluginUi.WidgetHandler;
-
-    // Import ReactDOM (must happen after globals)
-    const ReactDOM = await import('react-dom/client');
 
     // Create ObjectFetchManager wrapping the connection
     const objectFetchManager = createObjectFetchManager(connection);
