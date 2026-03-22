@@ -388,14 +388,59 @@ def _render_via_subprocess(widget, actions, render_timeout, max_rows,
         }
 
 
+RENDER_DAEMON_READY = "/tmp/render_daemon_ready"
+RENDER_DAEMON_CMD = (
+    "NODE_COMPILE_CACHE=/opt/render/.compile-cache "
+    "node --no-warnings --import /opt/render/src/css-loader.mjs "
+    "/opt/render/bin/render-daemon.mjs "
+    "</dev/null >/dev/null 2>/dev/null &"
+)
+
+
+def _start_daemon_if_needed(verbose, stderr_lines):
+    """Start the render daemon in background if it's not already running.
+
+    Returns True if we started a new daemon (caller should poll for readiness).
+    """
+    import time as _t
+
+    if os.path.exists(RENDER_DAEMON_SOCKET) or os.path.exists(RENDER_DAEMON_READY):
+        return False  # daemon already running or ready
+
+    _t0 = _t.time()
+    os.system(RENDER_DAEMON_CMD)
+    if verbose:
+        stderr_lines.append(f"[timing] daemon launch: {int((_t.time()-_t0)*1000)}ms")
+    return True
+
+
+def _poll_daemon_ready(timeout_s=5.0, verbose=False, stderr_lines=None):
+    """Poll for daemon readiness marker file. Returns True if daemon became ready."""
+    import time as _t
+
+    _t0 = _t.time()
+    while _t.time() - _t0 < timeout_s:
+        if os.path.exists(RENDER_DAEMON_READY):
+            if verbose and stderr_lines is not None:
+                stderr_lines.append(
+                    f"[timing] daemon ready wait: {int((_t.time()-_t0)*1000)}ms"
+                )
+            return True
+        _t.sleep(0.1)
+    return False
+
+
 def handle_render_request(session, request):
     """Process a render request: run script, then render via daemon or subprocess.
 
     Pool VMs have a pre-started render daemon (render-daemon.mjs) that keeps
     Node.js modules and JSAPI loaded in memory. Rendering through the daemon
-    takes ~1.2s vs ~6s for a fresh subprocess. Falls back to the overlapped
-    subprocess approach if the daemon isn't available (cold renders, older
-    snapshots).
+    takes ~1.2s vs ~6s for a fresh subprocess.
+
+    Cold renders also start the daemon in the background while the script runs,
+    so daemon startup (~3.5s) overlaps with script execution (~2.8s). After
+    the script finishes, we poll briefly for daemon readiness and use it.
+    Falls back to subprocess if the daemon isn't ready in time.
     """
     import time as _t
 
@@ -409,6 +454,10 @@ def handle_render_request(session, request):
     verbose = request.get("verbose", False)
 
     stderr_lines = []
+
+    # Step 0: If no daemon is running, start one in the background now.
+    # It will boot while the script runs, overlapping ~2.8s of startup.
+    daemon_launched = _start_daemon_if_needed(verbose, stderr_lines)
 
     # Step 1: Run the user's Python script — must complete before rendering
     # so the widget exists on the server.
@@ -439,9 +488,17 @@ def handle_render_request(session, request):
                 "render_output": "",
             }
 
-    # Step 2: Try the render daemon (fast path, ~1.2s).
-    # Pool VMs start render-daemon.mjs during fillOne. The daemon has all
-    # modules pre-loaded so createTestClient is ~200ms, not ~3600ms.
+    # Step 2: If we launched a daemon, wait briefly for it to become ready.
+    # The daemon starts at T=0, script runs ~3s. Daemon takes ~3.5s to boot.
+    # After script completes, daemon should be ready within ~0.5s. If it's not
+    # ready within 2s, it probably failed — fall through to subprocess quickly.
+    if daemon_launched:
+        _poll_daemon_ready(timeout_s=2.0, verbose=verbose, stderr_lines=stderr_lines)
+
+    # Step 3: Try the render daemon (fast path, ~1.2s).
+    # Pool VMs start render-daemon.mjs during fillOne; cold renders start it
+    # in step 0 above. The daemon has all modules pre-loaded so
+    # createTestClient is ~200ms, not ~3600ms.
     daemon_result = _render_via_daemon(
         widget, actions, render_timeout, max_rows,
         render_json, stderr_lines, _t_start, verbose,
@@ -449,9 +506,7 @@ def handle_render_request(session, request):
     if daemon_result is not None:
         return daemon_result
 
-    # Step 3: Fall back to subprocess (cold renders, daemon not ready).
-    # Uses overlapped execution: start Node.js before waiting, so session.open
-    # overlaps with any remaining setup time.
+    # Step 4: Fall back to subprocess (daemon not ready in time).
     return _render_via_subprocess(
         widget, actions, render_timeout, max_rows, render_json,
         stderr_lines, _t_start, verbose,

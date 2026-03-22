@@ -132,6 +132,22 @@ make test    # unit + behaviour tests
 make vet     # vet all source
 ```
 
+## Render Benchmarking
+
+To benchmark render performance after changing `vm_runner.py`, render JS files, or `warmup.mjs`:
+
+1. **Build**: `CGO_ENABLED=0 make build && cp dh ~/.local/bin/dh`
+2. **Rebuild snapshot** (required — these files are baked into the rootfs via `//go:embed`):
+   - `vm_runner.py`, `warmup.mjs`, `JsApiLoader.mjs`, `index.mjs` etc. are all embedded in the Go binary and copied into the Docker image during `vm prepare`
+   - The rootfs sources hash (`rootfsSourcesHash()`) determines whether `vm prepare` rebuilds the rootfs. It includes `vm_runner.py` but NOT render JS files. To force rebuild after JS-only changes: `rm /workspace/.dh/vm/rootfs/*.srchash`
+   - Delete old snapshot too: `rm -rf /workspace/.dh/vm/snapshots/<version>`
+   - Then use the fakeroot workaround (see above) to rebuild rootfs + `DH_HOME=/workspace/.dh dh vm prepare -v` for the snapshot
+3. **Benchmark**: `DH_HOME=/workspace/.dh ./scripts/bench-render.sh --runs 3`
+   - Runs 1 cold + N pool renders, validates snapshot output, prints summary table
+   - Cold renders use `DH_VM_POOL=0`; pool renders auto-start a pool of 1
+
+**Baseline (2026-03-22)**: cold=10021ms, pool avg=4510ms (script~2936ms, render~1127ms)
+
 ## Plan File Location
 
 When creating plans in plan mode, always save them to the `plans/` directory in this project.

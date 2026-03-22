@@ -45,12 +45,11 @@ export class JsApiLoader {
     }
 
     /**
-     * Load the JSAPI from the server using @deephaven/jsapi-nodejs,
-     * and create a jsdom environment for React rendering.
-     * @returns {Promise<{dh: object, window: object, dom: JSDOM}>}
+     * Load only the JSAPI modules (no jsdom creation).
+     * Can be called concurrently with other setup that doesn't need JSAPI.
+     * @returns {Promise<object>} The dh JSAPI object
      */
-    async load() {
-        // Load JSAPI natively in Node.js using the official package
+    async loadJSAPI() {
         const storageDir = DEFAULT_STORAGE_DIR;
         this.dh = await loadDhModules({
             serverUrl: new URL(this.serverUrl),
@@ -62,12 +61,30 @@ export class JsApiLoader {
             throw new Error('Failed to load Deephaven JSAPI - dh.CoreClient not found');
         }
 
-        // Create jsdom environment for React rendering (separate from JSAPI)
+        return this.dh;
+    }
+
+    /**
+     * Create the jsdom environment for React rendering.
+     * Can be called independently of loadJSAPI().
+     * @returns {JSDOM}
+     */
+    createDom() {
         this.dom = new JSDOM('<!DOCTYPE html><html><body></body></html>', {
             url: this.serverUrl,
             pretendToBeVisual: true,
         });
+        return this.dom;
+    }
 
+    /**
+     * Load the JSAPI from the server using @deephaven/jsapi-nodejs,
+     * and create a jsdom environment for React rendering.
+     * @returns {Promise<{dh: object, window: object, dom: JSDOM}>}
+     */
+    async load() {
+        await this.loadJSAPI();
+        this.createDom();
         return { dh: this.dh, window: this.dom.window, dom: this.dom };
     }
 

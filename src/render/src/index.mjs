@@ -70,7 +70,14 @@ const { createElement: h } = React;
  */
 export async function createTestClient(serverUrl, options = {}) {
     const loader = new JsApiLoader(serverUrl);
-    const { dh, dom } = await loader.load();
+
+    // Start JSAPI download and jsdom creation in parallel — they're independent.
+    // JSAPI is the slow part (~1200ms); jsdom is fast but free to overlap.
+    const [dh] = await Promise.all([
+        loader.loadJSAPI(),
+        Promise.resolve(loader.createDom()),
+    ]);
+    const dom = loader.dom;
 
     // Connect to server BEFORE installing jsdom globals.
     // Node.js v24's native WebSocket breaks if globalThis.Event is replaced
