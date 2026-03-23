@@ -48,7 +48,8 @@ htmlcov/
 
 # Render runtime
 src/render/node_modules/
-src/internal/render/embedded/
+src/internal/render/embedded/*
+!src/internal/render/embedded/.gitkeep
 
 # OS
 .DS_Store

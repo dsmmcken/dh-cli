@@ -53,7 +53,7 @@ RENDER_EMBED = src/internal/render/embedded
 .PHONY: build build-all test vet clean package package-all install-local uninstall render-prepare
 
 render-prepare:
-	rm -rf $(RENDER_EMBED)
+	rm -rf $(RENDER_EMBED)/src $(RENDER_EMBED)/bin $(RENDER_EMBED)/package.json $(RENDER_EMBED)/package-lock.json
 	mkdir -p $(RENDER_EMBED)
 	cp $(RENDER_SRC)/package.json $(RENDER_EMBED)/
 	cp $(RENDER_SRC)/package-lock.json $(RENDER_EMBED)/ 2>/dev/null || true
@@ -86,11 +86,11 @@ clean:
 	rm -rf dist
 
 ## Package the current platform as a Python wheel using go-to-wheel
-package:
+package: render-prepare
 	$(GO_TO_WHEEL) $(GO_TO_WHEEL_ARGS) --platforms $(WHEEL_PLATFORM)
 
 ## Package all platforms as Python wheels using go-to-wheel
-package-all:
+package-all: render-prepare
 	$(GO_TO_WHEEL) $(GO_TO_WHEEL_ARGS) --platforms $(WHEEL_PLATFORMS_ALL)
 
 ## Build wheel for current platform and install via uv tool

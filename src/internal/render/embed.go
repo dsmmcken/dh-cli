@@ -2,5 +2,5 @@ package render
 
 import "embed"
 
-//go:embed embedded
+//go:embed all:embedded
 var EmbeddedFS embed.FS
