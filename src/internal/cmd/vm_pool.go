@@ -176,23 +176,9 @@ func runPoolDaemonBackground(cmd *cobra.Command, version, dhHome string, idleTim
 		return fmt.Errorf("starting daemon: %w", err)
 	}
 
-	// Write PID file
+	// Write PID file and return immediately
 	os.WriteFile(pidPath, []byte(fmt.Sprintf("%d", daemonCmd.Process.Pid)), 0o644)
 	logFile.Close()
-
-	// Wait for socket to appear (up to 10s)
-	deadline := time.Now().Add(10 * time.Second)
-	for time.Now().Before(deadline) {
-		if vm.PoolProbe() {
-			fmt.Fprintf(cmd.ErrOrStderr(), "Pool daemon started (pid=%d, version=%s, size=%d, log=%s)\n",
-				daemonCmd.Process.Pid, version, poolSizeFlag, logPath)
-			return nil
-		}
-		time.Sleep(200 * time.Millisecond)
-	}
-
-	fmt.Fprintf(cmd.ErrOrStderr(), "Pool daemon started (pid=%d) but socket not ready yet. Check %s\n",
-		daemonCmd.Process.Pid, logPath)
 	return nil
 }
 
