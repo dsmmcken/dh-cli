@@ -23,6 +23,7 @@ var (
 	poolSizeFlag        int
 	poolIdleTimeoutFlag string
 	poolBackgroundFlag  bool
+	poolForegroundFlag  bool
 	poolJSONFlag        bool
 )
 
@@ -46,17 +47,18 @@ Subcommands:
 	startCmd := &cobra.Command{
 		Use:   "start",
 		Short: "Start the pool daemon",
-		Long: `Start the VM pool daemon in the foreground (or background with --background).
+		Long: `Start the VM pool daemon (background by default).
 
 The daemon pre-warms VMs from a snapshot and serves exec requests over a Unix
-socket. It auto-shuts down after the idle timeout.`,
+socket. It auto-shuts down after the idle timeout. Use --foreground to run
+in the current terminal (useful for debugging).`,
 		RunE: runPoolStart,
 	}
 	startCmd.Flags().IntVarP(&poolSizeFlag, "size", "n", 1, "Number of warm VMs to maintain")
 	startCmd.Flags().StringVar(&poolIdleTimeoutFlag, "idle-timeout", "5m", "Shut down after this duration of inactivity")
 	startCmd.Flags().StringVar(&vmVersionFlag, "version", "", "Deephaven version (default: resolved version)")
-	startCmd.Flags().BoolVar(&poolBackgroundFlag, "background", false, "Daemonize the pool daemon (internal)")
-	startCmd.Flags().MarkHidden("background")
+	startCmd.Flags().BoolVar(&poolBackgroundFlag, "background", false, "Run in background (default)")
+	startCmd.Flags().BoolVar(&poolForegroundFlag, "foreground", false, "Run in foreground (blocks until shutdown)")
 
 	// dh vm pool stop
 	stopCmd := &cobra.Command{
@@ -104,8 +106,8 @@ func runPoolStart(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("invalid idle-timeout: %w", err)
 	}
 
-	// If --background, daemonize by re-execing ourselves
-	if poolBackgroundFlag {
+	// Default to background unless --foreground is explicitly set.
+	if !poolForegroundFlag {
 		return runPoolDaemonBackground(cmd, version, dhHome, idleTimeout)
 	}
 
@@ -135,13 +137,14 @@ func runPoolStart(cmd *cobra.Command, args []string) error {
 
 // runPoolDaemonBackground forks the pool daemon as a background process.
 func runPoolDaemonBackground(cmd *cobra.Command, version, dhHome string, idleTimeout time.Duration) error {
-	// Build the command to run in background (without --background to avoid recursion)
+	// Build the command to run as a background process with --foreground so the
+	// child actually runs the foreground loop (default is background).
 	exePath, err := os.Executable()
 	if err != nil {
 		return fmt.Errorf("getting executable path: %w", err)
 	}
 
-	poolArgs := []string{"vm", "pool", "start",
+	poolArgs := []string{"vm", "pool", "start", "--foreground",
 		"-n", fmt.Sprintf("%d", poolSizeFlag),
 		"--idle-timeout", idleTimeout.String(),
 		"--version", version,

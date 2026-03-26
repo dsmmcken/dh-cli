@@ -488,6 +488,19 @@ def handle_render_request(session, request):
                 "render_output": "",
             }
 
+    # If the script ran without errors but no widget name was provided,
+    # surface a clear error. This happens when auto-detection failed and
+    # the script was run anyway to check for execution errors first.
+    if not widget:
+        return {
+            "exit_code": 1,
+            "stdout": "",
+            "stderr": "\n".join(stderr_lines),
+            "error": "No widget name specified. Use --widget to specify it manually,\n"
+                     "or name your widget variable with a '_widget' suffix (e.g. my_widget = ui.panel(...)).",
+            "render_output": "",
+        }
+
     # Step 2: If we launched a daemon, wait briefly for it to become ready.
     # The daemon starts at T=0, script runs ~3s. Daemon takes ~3.5s to boot.
     # After script completes, daemon should be ready within ~0.5s. If it's not

@@ -137,6 +137,11 @@ func runRenderPipeline(cmd *cobra.Command, args []string, diagnose bool) error {
 	if widget == "" {
 		detected, err := render.DetectWidgetName(absScript)
 		if err != nil {
+			// VM mode: defer widget detection to the VM — run the script first
+			// so execution errors (more actionable) surface before "no widget found".
+			if renderVMFlag {
+				return runRenderVM(cmd, args, diagnose)
+			}
 			return fmt.Errorf("auto-detecting widget name: %w\nUse --widget to specify it manually.", err)
 		}
 		widget = detected

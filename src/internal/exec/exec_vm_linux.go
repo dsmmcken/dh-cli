@@ -164,6 +164,7 @@ func runVM(cfg *ExecConfig, userCode, version, dhHome string) (int, map[string]a
 		Code:          userCode,
 		ShowTables:    cfg.ShowTables,
 		ShowTableMeta: cfg.ShowTableMeta,
+		Verbose:       cfg.Verbose,
 	}
 
 	// Run vsock request with context-aware timeout
@@ -352,14 +353,42 @@ func formatVsockResponse(cfg *ExecConfig, resp *vm.VsockResponse, version string
 		return exitCode, jsonResult, nil
 	}
 
+	// Determine filename for error compression (<string> → filename replacement).
+	filename := ""
+	if cfg.ScriptPath != "" && cfg.ScriptPath != "-" {
+		// Use just the base name for concise display.
+		parts := strings.Split(cfg.ScriptPath, "/")
+		filename = parts[len(parts)-1]
+	}
+
+	// Compress error text unless verbose.
+	var errorText string
+	if resp.Error != nil {
+		errorText = compressError(*resp.Error, filename, cfg.Verbose)
+	}
+
+	// Deduplicate: if stderr contains the same traceback as the error field,
+	// clear stderr to avoid printing it twice.
+	stderr := resp.Stderr
+	if stderr != "" && errorText != "" {
+		if strings.TrimSpace(stderr) == strings.TrimSpace(*resp.Error) ||
+			strings.TrimSpace(stderr) == strings.TrimSpace(errorText) {
+			stderr = ""
+		}
+	}
+
 	if cfg.JSONMode {
 		elapsed := time.Since(entryTime).Seconds()
+		var errorVal *string
+		if errorText != "" {
+			errorVal = &errorText
+		}
 		jsonResult := map[string]any{
 			"exit_code":       resp.ExitCode,
 			"stdout":          resp.Stdout,
-			"stderr":          resp.Stderr,
+			"stderr":          stderr,
 			"result_repr":     resp.ResultRepr,
-			"error":           resp.Error,
+			"error":           errorVal,
 			"tables":          resp.Tables,
 			"version":         version,
 			"vm_mode":         true,
@@ -379,9 +408,9 @@ func formatVsockResponse(cfg *ExecConfig, resp *vm.VsockResponse, version string
 		}
 	}
 
-	if resp.Stderr != "" {
-		fmt.Fprint(cfg.Stderr, resp.Stderr)
-		if !strings.HasSuffix(resp.Stderr, "\n") {
+	if stderr != "" {
+		fmt.Fprint(cfg.Stderr, stderr)
+		if !strings.HasSuffix(stderr, "\n") {
 			fmt.Fprintln(cfg.Stderr)
 		}
 	}
@@ -390,8 +419,8 @@ func formatVsockResponse(cfg *ExecConfig, resp *vm.VsockResponse, version string
 		fmt.Fprintln(cfg.Stdout, *resp.ResultRepr)
 	}
 
-	if resp.Error != nil && *resp.Error != "" {
-		fmt.Fprintln(cfg.Stderr, *resp.Error)
+	if errorText != "" {
+		fmt.Fprintln(cfg.Stderr, errorText)
 		return 1, nil, nil
 	}
 

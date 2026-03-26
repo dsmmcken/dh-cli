@@ -8,12 +8,14 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"sync"
 	"syscall"
 	"time"
 
 	"github.com/dsmmcken/dh-cli/src/internal/config"
+	dhexec "github.com/dsmmcken/dh-cli/src/internal/exec"
 	"github.com/dsmmcken/dh-cli/src/internal/output"
 	"github.com/dsmmcken/dh-cli/src/internal/vm"
 	"github.com/spf13/cobra"
@@ -160,18 +162,28 @@ func runRenderVM(cmd *cobra.Command, args []string, diagnose bool) error {
 		fmt.Fprint(cmd.OutOrStdout(), resp.RenderOutput)
 	}
 
-	// Print stderr (warnings, etc.)
-	if resp.Stderr != "" {
-		fmt.Fprint(cmd.ErrOrStderr(), resp.Stderr)
+	// Compress error if present
+	var errorText string
+	if resp.Error != nil && *resp.Error != "" {
+		filename := filepath.Base(scriptPath)
+		errorText = dhexec.CompressError(*resp.Error, filename, output.IsVerbose())
+	}
+
+	// Print stderr, deduplicating with the error field
+	stderr := resp.Stderr
+	if stderr != "" && errorText != "" {
+		if strings.TrimSpace(stderr) == strings.TrimSpace(*resp.Error) ||
+			strings.TrimSpace(stderr) == strings.TrimSpace(errorText) {
+			stderr = ""
+		}
+	}
+	if stderr != "" {
+		fmt.Fprint(cmd.ErrOrStderr(), stderr)
 	}
 
 	if resp.ExitCode != 0 {
-		errMsg := ""
-		if resp.Error != nil {
-			errMsg = *resp.Error
-		}
-		if errMsg != "" {
-			fmt.Fprintln(cmd.ErrOrStderr(), errMsg)
+		if errorText != "" {
+			fmt.Fprintln(cmd.ErrOrStderr(), errorText)
 		}
 		os.Exit(resp.ExitCode)
 	}

@@ -15,3 +15,4 @@ func runRenderVM(cmd *cobra.Command, args []string, diagnose bool) error {
 	os.Exit(output.ExitError)
 	return nil
 }
+
