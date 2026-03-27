@@ -167,15 +167,32 @@ func runVM(cfg *ExecConfig, userCode, version, dhHome string) (int, map[string]a
 		Verbose:       cfg.Verbose,
 	}
 
-	// Run vsock request with context-aware timeout
+	// Run vsock request with context-aware timeout.
+	// Retry up to 3 times on transient failures (e.g. EOF from runner
+	// crash). Each attempt uses a fresh vsock connection.
+	const maxVsockAttempts = 3
 	type vsockResult struct {
 		resp *vm.VsockResponse
 		err  error
 	}
 	resultCh := make(chan vsockResult, 1)
 	go func() {
-		resp, err := vm.ExecuteViaVsock(info.VsockPath, vm.VsockPort, req)
-		resultCh <- vsockResult{resp, err}
+		var lastErr error
+		for attempt := 0; attempt < maxVsockAttempts; attempt++ {
+			resp, err := vm.ExecuteViaVsock(info.VsockPath, vm.VsockPort, req)
+			if err == nil {
+				resultCh <- vsockResult{resp, nil}
+				return
+			}
+			lastErr = err
+			if cfg.Verbose {
+				fmt.Fprintf(cfg.Stderr, "vsock attempt %d/%d failed: %v\n", attempt+1, maxVsockAttempts, err)
+			}
+			if attempt < maxVsockAttempts-1 {
+				time.Sleep(200 * time.Millisecond)
+			}
+		}
+		resultCh <- vsockResult{nil, lastErr}
 	}()
 
 	var resp *vm.VsockResponse

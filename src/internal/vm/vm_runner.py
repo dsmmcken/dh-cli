@@ -644,7 +644,7 @@ def serve_forever(session):
             else:
                 response = handle_request(session, request)
             conn.sendall(json.dumps(response).encode("utf-8") + b"\n")
-        except Exception:
+        except BaseException:
             try:
                 err_resp = json.dumps({
                     "exit_code": 2,
@@ -655,12 +655,12 @@ def serve_forever(session):
                     "tables": [],
                 }).encode("utf-8") + b"\n"
                 conn.sendall(err_resp)
-            except Exception:
+            except BaseException:
                 pass
         finally:
             try:
                 conn.close()
-            except Exception:
+            except BaseException:
                 pass
 
 
