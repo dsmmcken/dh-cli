@@ -334,10 +334,11 @@ def _render_via_subprocess(widget, actions, render_timeout, max_rows,
         "--import", "/opt/render/src/css-loader.mjs",
         "/opt/render/bin/oneshot.mjs",
         "--url", _dh_url,
-        "--widget", widget,
         "--timeout", str(render_timeout),
         "--rows", str(max_rows),
     ]
+    if widget:
+        node_args.extend(["--widget", widget])
     if render_json:
         node_args.append("--json")
     if verbose:
@@ -488,18 +489,8 @@ def handle_render_request(session, request):
                 "render_output": "",
             }
 
-    # If the script ran without errors but no widget name was provided,
-    # surface a clear error. This happens when auto-detection failed and
-    # the script was run anyway to check for execution errors first.
-    if not widget:
-        return {
-            "exit_code": 1,
-            "stdout": "",
-            "stderr": "\n".join(stderr_lines),
-            "error": "No widget name specified. Use --widget to specify it manually,\n"
-                     "or name your widget variable with a '_widget' suffix (e.g. my_widget = ui.panel(...)).",
-            "render_output": "",
-        }
+    # Widget name may be empty — the JS renderer will auto-discover
+    # renderable widgets (Dashboard > Element) from the server.
 
     # Step 2: If we launched a daemon, wait briefly for it to become ready.
     # The daemon starts at T=0, script runs ~3s. Daemon takes ~3.5s to boot.

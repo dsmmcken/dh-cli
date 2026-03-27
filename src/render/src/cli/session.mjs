@@ -14,6 +14,7 @@ export class DaemonSession {
         this.serverUrl = null;
         this._testClient = null;
         this._renderResult = null;
+        this._renderResults = [];
         this._snapshotRefs = new Map();
         this._widgetName = null;
         this._widgetType = null;
@@ -30,23 +31,55 @@ export class DaemonSession {
 
     /**
      * Render a widget using WidgetHandler with real DH components.
+     * If widgetName is empty/null, auto-discovers renderable widgets
+     * (Dashboard > Element) and renders all of them.
      */
     async render(widgetName, widgetType, timeout = 15000) {
         if (!this._testClient) {
             return { ok: false, error: 'Not connected. Use "open" first.' };
         }
 
-        // Clean up previous render
-        if (this._renderResult) {
-            this._renderResult.unmount();
-            this._renderResult = null;
+        // Clean up previous renders
+        for (const r of this._renderResults) {
+            r.unmount();
+        }
+        this._renderResults = [];
+        this._renderResult = null;
+
+        // If no widget name, discover renderable widgets from the server
+        let widgets;
+        if (!widgetName) {
+            const wc = this._widgetClient;
+            if (!wc) {
+                return { ok: false, error: 'Not connected.' };
+            }
+            widgets = await wc.discoverWidgets(timeout);
+            if (widgets.length === 0) {
+                return {
+                    ok: false,
+                    error: 'No renderable widgets found. The script must define a '
+                         + 'ui.dashboard() or @ui.component decorated function.\n'
+                         + 'Use --widget to specify a variable name manually.',
+                };
+            }
+        } else {
+            widgets = [{ name: widgetName, type: widgetType }];
         }
 
-        this._widgetName = widgetName;
-        this._widgetType = widgetType;
+        // Render each widget — all go into the same jsdom body
+        const names = [];
+        for (const w of widgets) {
+            const result = await this._testClient.render(w.name, {
+                widgetType: w.type, timeout,
+            });
+            this._renderResults.push(result);
+            names.push(w.name);
+        }
 
-        // Delegate rendering to TestClient (uses WidgetHandler internally)
-        this._renderResult = await this._testClient.render(widgetName, { widgetType, timeout });
+        // Use the first result as the primary (for _body access)
+        this._renderResult = this._renderResults[0];
+        this._widgetName = names.join(', ');
+        this._widgetType = widgetType;
 
         // Build initial snapshot from body (portals render outside container)
         const body = this._body;
@@ -54,13 +87,17 @@ export class DaemonSession {
         this._snapshotRefs = snapshot.refs;
 
         // Count elements, buttons/interactive, and any exported objects
-        const panel = body.querySelector('.dh-react-panel');
-        const elementCount = panel ? panel.querySelectorAll('*').length : 0;
+        const panels = body.querySelectorAll('.dh-react-panel');
+        let elementCount = 0;
+        for (const panel of panels) {
+            elementCount += panel.querySelectorAll('*').length;
+        }
         const callableCount = body.querySelectorAll('button, [role="button"], a[href], [role="link"]').length;
 
+        const label = names.length === 1 ? `"${names[0]}"` : `${names.length} widgets (${names.join(', ')})`;
         return {
             ok: true,
-            message: `Rendered "${widgetName}"`,
+            message: `Rendered ${label}`,
             snapshot: snapshot.text,
             interactiveCount: snapshot.interactiveCount,
             elementCount,
@@ -449,10 +486,11 @@ export class DaemonSession {
      * Clean up everything.
      */
     close() {
-        if (this._renderResult) {
-            this._renderResult.unmount();
-            this._renderResult = null;
+        for (const r of this._renderResults) {
+            r.unmount();
         }
+        this._renderResults = [];
+        this._renderResult = null;
         if (this._testClient) {
             this._testClient.close();
             this._testClient = null;

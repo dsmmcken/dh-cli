@@ -62,7 +62,7 @@ Examples:
 
 	flags := cmd.Flags()
 	flags.StringVar(&renderURLFlag, "url", "", "Connect to existing server (skip server start)")
-	flags.StringVar(&renderWidgetFlag, "widget", "", "Widget name (default: auto-detect from script)")
+	flags.StringVar(&renderWidgetFlag, "widget", "", "Widget name (default: auto-discover from server)")
 	flags.IntVar(&renderPortFlag, "port", 0, "Server port (0 = auto-assign)")
 	flags.IntVar(&renderTimeoutFlag, "timeout", 15000, "Render timeout in ms")
 	flags.IntVar(&renderRowsFlag, "rows", 10, "Max table rows")
@@ -87,7 +87,7 @@ Examples:
 
 	diagnoseFlags := diagnoseCmd.Flags()
 	diagnoseFlags.StringVar(&renderURLFlag, "url", "", "Connect to existing server (skip server start)")
-	diagnoseFlags.StringVar(&renderWidgetFlag, "widget", "", "Widget name (default: auto-detect from script)")
+	diagnoseFlags.StringVar(&renderWidgetFlag, "widget", "", "Widget name (default: auto-discover from server)")
 	diagnoseFlags.IntVar(&renderPortFlag, "port", 0, "Server port (0 = auto-assign)")
 	diagnoseFlags.IntVar(&renderTimeoutFlag, "timeout", 15000, "Render timeout in ms")
 	diagnoseFlags.StringVar(&renderVersionFlag, "version", "", "Deephaven version to use")
@@ -132,24 +132,9 @@ func runRenderPipeline(cmd *cobra.Command, args []string, diagnose bool) error {
 		return fmt.Errorf("resolving script path: %w", err)
 	}
 
-	// Detect widget name
+	// Widget name: use --widget if specified, otherwise let the JS renderer
+	// auto-discover renderable widgets (Dashboard > Element) from the server.
 	widget := renderWidgetFlag
-	if widget == "" {
-		detected, err := render.DetectWidgetName(absScript)
-		if err != nil {
-			// VM mode: defer widget detection to the VM — run the script first
-			// so execution errors (more actionable) surface before "no widget found".
-			if renderVMFlag {
-				return runRenderVM(cmd, args, diagnose)
-			}
-			return fmt.Errorf("auto-detecting widget name: %w\nUse --widget to specify it manually.", err)
-		}
-		widget = detected
-		renderWidgetFlag = detected // make available to VM path
-		if output.IsVerbose() {
-			fmt.Fprintf(cmd.ErrOrStderr(), "Detected widget: %s\n", widget)
-		}
-	}
 
 	// VM mode — skip Node.js/npm/server checks, delegate to VM
 	if renderVMFlag {
@@ -197,9 +182,11 @@ func runRenderPipeline(cmd *cobra.Command, args []string, diagnose bool) error {
 		"--import", cssLoaderPath,
 		oneshotPath,
 		"--url", serverURL,
-		"--widget", widget,
 		"--timeout", fmt.Sprintf("%d", renderTimeoutFlag),
 		"--rows", fmt.Sprintf("%d", renderRowsFlag),
+	}
+	if widget != "" {
+		nodeArgs = append(nodeArgs, "--widget", widget)
 	}
 
 	if renderJSONFlag || output.IsJSON() {

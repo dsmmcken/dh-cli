@@ -64,8 +64,10 @@ Widget types are auto-detected via `subscribeToFieldUpdates()`. The `--type` fla
 ### jsdom Global Installation
 `TestClient` temporarily installs jsdom globals on `globalThis` and restores originals on `close()`.
 
-### Python Test Convention
-Each test file has a top-level `<name>_widget = ...` assignment discovered via regex.
+### Widget Auto-Discovery
+Widgets are auto-discovered from the server via `subscribeToFieldUpdates()`.
+Priority: `deephaven.ui.Dashboard` > `deephaven.ui.Element`. Multiple widgets are rendered together.
+The `--widget` flag is optional — only needed to target a specific variable.
 
 ### postinstall Hook
 `npm install` runs `node src/patch-bundle.mjs` which patches `@deephaven/js-plugin-ui` for jsdom compatibility.

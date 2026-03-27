@@ -181,21 +181,3 @@ func embeddedHash() (string, error) {
 	return fmt.Sprintf("%x", h.Sum(nil)), nil
 }
 
-// DetectWidgetName scans a Python file for the naming convention: <name>_widget = ...
-func DetectWidgetName(scriptPath string) (string, error) {
-	data, err := os.ReadFile(scriptPath)
-	if err != nil {
-		return "", err
-	}
-	return DetectWidgetNameFromSource(string(data))
-}
-
-// DetectWidgetNameFromSource scans Python source for the widget name convention.
-func DetectWidgetNameFromSource(source string) (string, error) {
-	re := regexp.MustCompile(`(?m)^(\w+_widget)\s*=`)
-	m := re.FindStringSubmatch(source)
-	if m == nil {
-		return "", fmt.Errorf("no widget name found (expected <name>_widget = ... assignment)")
-	}
-	return m[1], nil
-}

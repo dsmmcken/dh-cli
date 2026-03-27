@@ -5,7 +5,7 @@
  * No daemon, no sockets. Connects, renders, performs actions, outputs, exits.
  *
  * Usage:
- *   node --import ./src/css-loader.mjs bin/oneshot.mjs --url <url> --widget <name> [actions...]
+ *   node --import ./src/css-loader.mjs bin/oneshot.mjs --url <url> [--widget <name>] [actions...]
  *
  * Actions (left to right):
  *   snapshot                    Print accessibility tree
@@ -22,7 +22,7 @@
  *
  * Flags:
  *   --url <url>          Server URL (required)
- *   --widget <name>      Widget name (required)
+ *   --widget <name>      Widget name (optional; auto-discovers if omitted)
  *   --type <type>        Widget type (default: auto-detect)
  *   --timeout <ms>       Render timeout (default: 15000)
  *   --rows <n>           Max table rows (default: 10)
@@ -80,9 +80,9 @@ const maxRows = parseInt(getFlag('rows', '10'), 10);
 const jsonOutput = hasFlag('json');
 const verbose = hasFlag('verbose');
 
-if (!url || !widget) {
-    console.error('Usage: oneshot.mjs --url <url> --widget <name> [actions...]');
-    console.error('  --url and --widget are required.');
+if (!url) {
+    console.error('Usage: oneshot.mjs --url <url> [--widget <name>] [actions...]');
+    console.error('  --url is required. --widget is optional (auto-discovers if omitted).');
     process.exit(1);
 }
 

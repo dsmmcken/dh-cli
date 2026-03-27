@@ -134,6 +134,66 @@ export class WidgetClient {
     }
 
     /**
+     * Discover all renderable widgets on the server.
+     * Returns them sorted by priority: Dashboard > Element.
+     *
+     * @param {number} [timeout=5000] - Timeout in ms
+     * @returns {Promise<Array<{name: string, type: string}>>}
+     */
+    async discoverWidgets(timeout = 5000) {
+        if (!this.connection) return [];
+
+        const fields = await new Promise((resolve) => {
+            let removeListener;
+            const timeoutId = setTimeout(() => {
+                removeListener?.();
+                resolve(null);
+            }, timeout);
+
+            function handleFieldUpdates(changes) {
+                clearTimeout(timeoutId);
+                removeListener?.();
+                resolve(changes);
+            }
+
+            try {
+                removeListener = this.connection.subscribeToFieldUpdates(handleFieldUpdates);
+            } catch (e) {
+                try {
+                    const handler = (event) => handleFieldUpdates(event.detail || event);
+                    this.connection.addEventListener('fieldUpdates', handler);
+                    removeListener = () => this.connection.removeEventListener('fieldUpdates', handler);
+                    this.connection.subscribeToFieldUpdates();
+                } catch (e2) {
+                    clearTimeout(timeoutId);
+                    resolve(null);
+                }
+            }
+        });
+
+        if (!fields) return [];
+
+        const allFields = [
+            ...(fields.created || []),
+            ...(fields.updated || []),
+        ];
+
+        const RENDERABLE_TYPES = ['deephaven.ui.Dashboard', 'deephaven.ui.Element'];
+        const TYPE_PRIORITY = { 'deephaven.ui.Dashboard': 0, 'deephaven.ui.Element': 1 };
+
+        return allFields
+            .filter(f => {
+                const type = f.type || f.type_0;
+                return RENDERABLE_TYPES.includes(type);
+            })
+            .map(f => ({
+                name: f.title || f.name || f.name_0,
+                type: f.type || f.type_0,
+            }))
+            .sort((a, b) => (TYPE_PRIORITY[a.type] ?? 99) - (TYPE_PRIORITY[b.type] ?? 99));
+    }
+
+    /**
      * Open a widget by name and type, set up JSON-RPC, and wait for the initial document.
      * @param {string} name - Widget name
      * @param {string} [type] - Widget type (auto-detected if not specified)

@@ -11,62 +11,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// ── Widget name detection ──
-
-func TestDetectWidgetName_Simple(t *testing.T) {
-	name, err := render.DetectWidgetNameFromSource(`
-from deephaven import ui
-
-button_widget = ui.button("Click me")
-`)
-	require.NoError(t, err)
-	assert.Equal(t, "button_widget", name)
-}
-
-func TestDetectWidgetName_WithSpaces(t *testing.T) {
-	name, err := render.DetectWidgetNameFromSource(`
-form_widget  =  ui.form(children=[])
-`)
-	require.NoError(t, err)
-	assert.Equal(t, "form_widget", name)
-}
-
-func TestDetectWidgetName_MultipleWidgets(t *testing.T) {
-	// Should return the first match
-	name, err := render.DetectWidgetNameFromSource(`
-first_widget = ui.button("A")
-second_widget = ui.button("B")
-`)
-	require.NoError(t, err)
-	assert.Equal(t, "first_widget", name)
-}
-
-func TestDetectWidgetName_NoMatch(t *testing.T) {
-	_, err := render.DetectWidgetNameFromSource(`
-x = 42
-table = empty_table(5)
-`)
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "no widget name found")
-}
-
-func TestDetectWidgetName_FromFile(t *testing.T) {
-	tmpDir := t.TempDir()
-	scriptPath := filepath.Join(tmpDir, "test_button.py")
-	require.NoError(t, os.WriteFile(scriptPath, []byte(`
-from deephaven import ui
-button_widget = ui.button("Primary")
-`), 0o644))
-
-	name, err := render.DetectWidgetName(scriptPath)
-	require.NoError(t, err)
-	assert.Equal(t, "button_widget", name)
-}
-
-func TestDetectWidgetName_MissingFile(t *testing.T) {
-	_, err := render.DetectWidgetName("/nonexistent/path.py")
-	require.Error(t, err)
-}
+// Widget auto-detection is now handled by the JS renderer via
+// subscribeToFieldUpdates (no Go-side regex detection).
 
 // ── Node.js version parsing ──
 
