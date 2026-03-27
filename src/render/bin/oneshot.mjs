@@ -180,6 +180,14 @@ function output(data) {
     }
 }
 
+// Detect illustrated_message errors in snapshot text (React error boundary UI).
+// These render successfully (DOM exists) but indicate a widget error.
+function snapshotHasError(text) {
+    return /^\s*\[illustrated_message\] icon="warning"/m.test(text);
+}
+
+let hasIllustratedError = false;
+
 try {
     const _t0 = Date.now();
     // Connect and render
@@ -251,6 +259,10 @@ try {
         }
 
         output(result);
+
+        if (result.snapshot && snapshotHasError(result.snapshot)) {
+            hasIllustratedError = true;
+        }
     }
 } catch (e) {
     console.error(`Fatal: ${e.message || e}`);
@@ -258,5 +270,5 @@ try {
 } finally {
     session.close();
     // Force exit — JSAPI event loops may keep process alive
-    setTimeout(() => process.exit(0), 100);
+    setTimeout(() => process.exit(hasIllustratedError ? 1 : 0), 100);
 }

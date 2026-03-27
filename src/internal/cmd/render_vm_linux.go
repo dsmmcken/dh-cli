@@ -162,6 +162,11 @@ func runRenderVM(cmd *cobra.Command, args []string, diagnose bool) error {
 		fmt.Fprint(cmd.OutOrStdout(), resp.RenderOutput)
 	}
 
+	// Detect illustrated_message errors in render output (React error boundary UI).
+	// These render successfully but indicate a widget error — should fail the command.
+	hasIllustratedError := resp.RenderOutput != "" &&
+		strings.Contains(resp.RenderOutput, "[illustrated_message] icon=\"warning\"")
+
 	// Compress error if present
 	var errorText string
 	if resp.Error != nil && *resp.Error != "" {
@@ -186,6 +191,10 @@ func runRenderVM(cmd *cobra.Command, args []string, diagnose bool) error {
 			fmt.Fprintln(cmd.ErrOrStderr(), errorText)
 		}
 		os.Exit(resp.ExitCode)
+	}
+
+	if hasIllustratedError {
+		os.Exit(1)
 	}
 
 	return nil
