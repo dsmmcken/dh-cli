@@ -1,0 +1,20 @@
+[Plot] line | 1 traces
+  "line "sqrt(x)""
+  @e1 [button] "Expand figure"
+[Plot] line | 2 traces
+  "line "sin""
+  "line "cos""
+  @e2 [button] "Expand figure"
+[Plot] bar | 1 traces
+  "bar "Categories""
+  @e3 [button] "Expand figure"
+[Plot] histogram | 1 traces
+  "histogram "Histogram Values""
+  @e4 [button] "Expand figure"
+[Plot] pie | 1 traces
+  "pie "Expenses by Region""
+  @e5 [button] "Expand figure"
+[Plot] line | 2 traces
+  "line "Cosine""
+  "line "Sine""
+  @e6 [button] "Expand figure"

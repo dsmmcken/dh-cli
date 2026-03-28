@@ -56,9 +56,13 @@ import { installJsdomGlobals } from './jsdom-globals.mjs';
 import { loadProviders, TestProviderStack } from './TestProviderStack.mjs';
 import { loadGoldenLayout, createTestLayout } from './GoldenLayoutSetup.mjs';
 import { createObjectFetchManager } from './ObjectFetcherBridge.mjs';
+import { FigureWidgetPlugin, isFigureType } from './FigureStub.mjs';
 import React from 'react';
 
 const { createElement: h } = React;
+
+/** Types that bypass WidgetHandler (they don't implement JSON-RPC widget protocol). */
+const DIRECT_RENDER_TYPES = new Set(['Figure']);
 
 /**
  * Create a reusable test client for a Deephaven server.
@@ -202,6 +206,13 @@ class TestClient {
             type = 'deephaven.ui.Element';
         }
 
+        // Classic Figure objects don't implement the JSON-RPC widget protocol
+        // that WidgetHandler requires (no getDataAsString). Render them directly
+        // using FigureWidgetPlugin, bypassing WidgetHandler entirely.
+        if (DIRECT_RENDER_TYPES.has(type)) {
+            return this._renderDirect(widgetName, type, options);
+        }
+
         // Create GoldenLayout instance for this render
         const jsdomWindow = this._dom.window;
         const { layout, destroy } = createTestLayout(jsdomWindow);
@@ -244,6 +255,73 @@ class TestClient {
             const isLoading = !!b.querySelector('[class*="loading"]');
             const hasLoadingText = b.textContent.includes('[Loading');
             return hasContent && !isLoading && !hasLoadingText;
+        });
+
+        while (Date.now() - start < timeout) {
+            await act(async () => {
+                await new Promise(r => setTimeout(r, 100));
+            });
+            if (readyCheck(body)) break;
+        }
+
+        const result = new RenderResult({
+            body,
+            container,
+            root,
+            layout,
+            destroy,
+            jsdomWindow,
+            widgetClient: this._widgetClient,
+            widgetName,
+            onUnmount: () => {
+                const idx = this._activeResults.indexOf(result);
+                if (idx >= 0) this._activeResults.splice(idx, 1);
+            },
+        });
+
+        this._activeResults.push(result);
+        return result;
+    }
+
+    /**
+     * Render a widget directly without WidgetHandler.
+     * Used for types like classic Figure that don't implement the JSON-RPC
+     * widget protocol. Renders FigureWidgetPlugin (or similar) directly.
+     */
+    async _renderDirect(widgetName, type, options = {}) {
+        const { timeout = 10000, checkFn } = options;
+        const jsdomWindow = this._dom.window;
+        const { layout, destroy } = createTestLayout(jsdomWindow);
+        const { act } = React;
+
+        const container = jsdomWindow.document.createElement('div');
+        container.id = `dh-render-${widgetName}`;
+        jsdomWindow.document.body.appendChild(container);
+        const root = this._ReactDOM.createRoot(container);
+
+        // Build a fetch function that retrieves the object from the server
+        const connection = this._connection;
+        const fetchFn = async () => connection.getObject({ name: widgetName, type });
+
+        // Pick the right component for the type
+        const Component = isFigureType(type) ? FigureWidgetPlugin : FigureWidgetPlugin;
+
+        // Wrap in a .dh-react-panel div so the snapshot builder finds content
+        await act(async () => {
+            root.render(
+                h('div', { className: 'dh-react-panel' },
+                    h(Component, { fetch: fetchFn })
+                )
+            );
+        });
+
+        const body = jsdomWindow.document.body;
+        const start = Date.now();
+        const readyCheck = checkFn || ((b) => {
+            const fig = b.querySelector('[role="figure"]');
+            if (!fig) return false;
+            const isLoading = b.textContent.includes('[Loading');
+            return !isLoading;
         });
 
         while (Date.now() - start < timeout) {

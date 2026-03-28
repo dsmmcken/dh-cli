@@ -1,3 +1,4 @@
-from deephaven import read_csv
+from deephaven import read_csv, ui
 
-t = read_csv("./tests/sample_data.csv")
+t = ui.table(read_csv("./tests/sample_data.csv"))
+

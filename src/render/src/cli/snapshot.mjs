@@ -840,6 +840,8 @@ export function buildSnapshot(container) {
                 if (rowCount && colCount) label += ` ${rowCount} rows, ${colCount} columns`;
             }
             if (role === 'figure') {
+                const figApi = element.getAttribute('data-figure-api');
+                if (figApi === 'classic') label = '[Plot]';
                 const figType = element.getAttribute('data-figure-type');
                 const traceCount = element.getAttribute('data-trace-count');
                 if (figType) label += ` ${figType}`;

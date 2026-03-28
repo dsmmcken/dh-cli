@@ -178,8 +178,8 @@ export class WidgetClient {
             ...(fields.updated || []),
         ];
 
-        const RENDERABLE_TYPES = ['deephaven.ui.Dashboard', 'deephaven.ui.Element'];
-        const TYPE_PRIORITY = { 'deephaven.ui.Dashboard': 0, 'deephaven.ui.Element': 1 };
+        const RENDERABLE_TYPES = ['deephaven.ui.Dashboard', 'deephaven.ui.Element', 'Figure', 'deephaven.plot.express.DeephavenFigure'];
+        const TYPE_PRIORITY = { 'deephaven.ui.Dashboard': 0, 'deephaven.ui.Element': 1, 'Figure': 2, 'deephaven.plot.express.DeephavenFigure': 2 };
 
         return allFields
             .filter(f => {

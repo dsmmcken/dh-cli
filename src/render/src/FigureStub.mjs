@@ -1,11 +1,12 @@
 /**
- * FigureStub — renders a plotly-express figure as a textual summary.
+ * FigureStub — renders both plotly-express (dx) and classic
+ * deephaven.plot.figure.Figure objects as textual summaries.
  *
- * Fetches the NEW_FIGURE payload from the exported object via
- * reexport() → fetch() → getDataAsString(), parses the plotly JSON
- * and deephaven data mappings, and renders a progressive-disclosure
- * summary (collapsed by default, expandable to show data mappings
- * and layout details).
+ * dx figures:      reexport() → fetch() → getDataAsString() → plotly JSON
+ * classic figures:  reexport() → fetch() → dh.plot.Figure (has .charts/.series)
+ *
+ * Both paths produce the same { title, traceType, traceCount, axes, traceList, … }
+ * shape and render through the shared FigureDataView component.
  */
 import React from 'react';
 
@@ -13,6 +14,9 @@ const { createElement: h, useState, useEffect } = React;
 
 /** The plugin type string reported by the server for plotly-express figures. */
 export const FIGURE_TYPE = 'deephaven.plot.express.DeephavenFigure';
+
+/** The type string for classic deephaven.plot.figure.Figure objects. */
+export const CLASSIC_FIGURE_TYPE = 'Figure';
 
 /**
  * Check whether an exported object type string represents a figure.
@@ -105,6 +109,7 @@ function parseFigurePayload(payload) {
     if (layout.showlegend === false) layoutProps.showlegend = false;
 
     return {
+        api: 'express',
         title,
         traceType,
         traceCount: traces.length,
@@ -115,15 +120,115 @@ function parseFigurePayload(payload) {
     };
 }
 
+/** Map classic Figure plotStyle enum values to short display names.
+ *  The JSAPI may return numeric enum ordinals OR string names. */
+function normalizeClassicPlotStyle(plotStyle) {
+    if (plotStyle === null || plotStyle === undefined) return 'unknown';
+    // Numeric enum ordinals (PlotStyle Java enum order)
+    const byOrdinal = {
+        0: 'bar', 1: 'stacked bar', 2: 'line', 3: 'area',
+        4: 'stacked area', 5: 'pie', 6: 'histogram', 7: 'OHLC',
+        8: 'scatter', 9: 'step', 10: 'error bar', 11: 'treemap',
+    };
+    if (typeof plotStyle === 'number' || /^\d+$/.test(String(plotStyle))) {
+        return byOrdinal[Number(plotStyle)] || `style-${plotStyle}`;
+    }
+    // String names
+    const s = String(plotStyle).toUpperCase();
+    const byName = {
+        LINE: 'line', BAR: 'bar', SCATTER: 'scatter',
+        AREA: 'area', STACKED_AREA: 'stacked area',
+        STEP: 'step', PIE: 'pie', HISTOGRAM: 'histogram',
+        OHLC: 'OHLC', TREEMAP: 'treemap', ERROR_BAR: 'error bar',
+        STACKED_BAR: 'stacked bar',
+    };
+    return byName[s] || s.toLowerCase();
+}
+
+/**
+ * Parse a classic dh.plot.Figure object into the same summary shape
+ * that parseFigurePayload() returns for dx figures.
+ * @param {object} figure - A dh.plot.Figure instance (has .charts, .title)
+ */
+function parseClassicFigure(figure) {
+    const title = figure.title || '';
+    const charts = figure.charts || [];
+
+    const axes = [];
+    const traceList = [];
+
+    for (const chart of charts) {
+        // Collect axes — axis.type may be a string ('X','Y') or numeric enum
+        for (const axis of (chart.axes || [])) {
+            const label = axis.label;
+            if (label) {
+                let axisType = axis.type;
+                if (typeof axisType === 'number') {
+                    axisType = axisType === 0 ? 'x' : 'y';
+                } else {
+                    axisType = String(axisType || 'x').toLowerCase();
+                }
+                axes.push({ axis: axisType, label });
+            }
+        }
+        // Collect series as traces
+        for (const series of (chart.series || [])) {
+            traceList.push({
+                type: normalizeClassicPlotStyle(series.plotStyle),
+                name: series.name || '',
+                mode: undefined,
+                color: undefined,
+            });
+        }
+    }
+
+    // Primary trace type = most common plotStyle
+    const typeCounts = {};
+    for (const t of traceList) {
+        typeCounts[t.type] = (typeCounts[t.type] || 0) + 1;
+    }
+    const traceType = Object.entries(typeCounts).sort((a, b) => b[1] - a[1])[0]?.[0] || 'unknown';
+
+    return {
+        api: 'classic',
+        title,
+        traceType,
+        traceCount: traceList.length,
+        axes,
+        traceList,
+        columnMappings: [],
+        layoutProps: {},
+    };
+}
+
+/**
+ * Resolve a fetched widget to figure summary data.
+ * Handles both dx figures (plotly JSON via getDataAsString) and classic
+ * dh.plot.Figure objects (have .charts property).
+ * @param {object} widget - The fetched widget/figure object
+ */
+function resolveWidgetToFigureData(widget) {
+    // dx / plotly-express path
+    if (typeof widget.getDataAsString === 'function') {
+        const payload = JSON.parse(widget.getDataAsString());
+        return parseFigurePayload(payload);
+    }
+    // Classic dh.plot.Figure path
+    if (widget.charts) {
+        return parseClassicFigure(widget);
+    }
+    throw new Error('Unknown figure format');
+}
+
 /**
  * Fetch and parse figure data from an exported object.
+ * Works for both dx and classic figures.
  * @param {object} exportedObject
  */
 async function fetchFigureData(exportedObject) {
     const reexported = await exportedObject.reexport();
     const widget = await reexported.fetch();
-    const payload = JSON.parse(widget.getDataAsString());
-    return parseFigurePayload(payload);
+    return resolveWidgetToFigureData(widget);
 }
 
 /**
@@ -158,6 +263,7 @@ export function FigureStub({ objectId, exportedObject }) {
     if (data) {
         attrs['data-figure-type'] = data.traceType;
         attrs['data-trace-count'] = String(data.traceCount);
+        attrs['data-figure-api'] = data.api;
     }
 
     const children = [];
@@ -243,10 +349,7 @@ export function FigureWidgetPlugin({ fetch: fetchWidget }) {
         }
         let cancelled = false;
         fetchWidget()
-            .then(widget => {
-                const payload = JSON.parse(widget.getDataAsString());
-                return parseFigurePayload(payload);
-            })
+            .then(widget => resolveWidgetToFigureData(widget))
             .then(d => { if (!cancelled) setData(d); })
             .catch(e => { if (!cancelled) setError(e); })
             .finally(() => { if (!cancelled) setLoading(false); });
@@ -260,6 +363,7 @@ export function FigureWidgetPlugin({ fetch: fetchWidget }) {
     if (data) {
         attrs['data-figure-type'] = data.traceType;
         attrs['data-trace-count'] = String(data.traceCount);
+        attrs['data-figure-api'] = data.api;
     }
 
     const children = [];
@@ -324,7 +428,7 @@ export function FigureWidgetPlugin({ fetch: fetchWidget }) {
 FigureWidgetPlugin.displayName = 'FigureWidgetPlugin';
 
 /**
- * Creates a PluginModuleMap entry for the Figure stub as a WidgetPlugin.
+ * Creates PluginModuleMap entries for both dx and classic figure types.
  * @returns {Map<string, object>}
  */
 export function createFigureStubPluginMap() {
@@ -333,6 +437,12 @@ export function createFigureStubPluginMap() {
             name: 'dh-render-test-figure-stub',
             type: 'WidgetPlugin',
             supportedTypes: FIGURE_TYPE,
+            component: FigureWidgetPlugin,
+        }],
+        ['dh-render-test-classic-figure-stub', {
+            name: 'dh-render-test-classic-figure-stub',
+            type: 'WidgetPlugin',
+            supportedTypes: CLASSIC_FIGURE_TYPE,
             component: FigureWidgetPlugin,
         }],
     ]);
