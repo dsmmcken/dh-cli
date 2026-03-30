@@ -28,24 +28,100 @@ export function isFigureType(type) {
     return type.includes('Figure');
 }
 
-/** Normalize plotly trace type to a short human-readable name. */
-function normalizeTraceType(type) {
-    const map = {
-        scattergl: 'scatter', scatter: 'scatter',
-        bar: 'bar', histogram: 'histogram',
-        heatmap: 'heatmap', pie: 'pie',
-        ohlc: 'OHLC', candlestick: 'candlestick',
-        treemap: 'treemap',
+/**
+ * Infer the high-level chart type from a plotly trace object.
+ *
+ * Plotly reuses a handful of base trace types for many chart kinds
+ * (e.g. scatter for line/area, box for strip).  We inspect `mode`,
+ * `stackgroup`, `boxpoints`, `fillcolor`, and layout-level hints
+ * to recover the original Deephaven Express (dx) chart type.
+ *
+ * @param {object|string} trace  - Full trace object, or just the type string
+ *                                 (for backwards compat / classic figures).
+ * @param {object}        layout - The plotly layout object (optional, needed
+ *                                 for bar-family disambiguation).
+ */
+function normalizeTraceType(trace, layout) {
+    // Accept a plain string for backward-compat with classic-figure path
+    if (typeof trace === 'string') trace = { type: trace };
+    const type = trace?.type || 'unknown';
+    const mode = trace?.mode || '';
+
+    // ── scatter family: line / area / scatter ──
+    if (type === 'scatter' || type === 'scattergl') {
+        if (mode.includes('lines')) return trace.stackgroup ? 'area' : 'line';
+        return 'scatter';
+    }
+
+    // ── 3D ──
+    if (type === 'scatter3d') {
+        return mode.includes('lines') ? 'line_3d' : 'scatter_3d';
+    }
+
+    // ── polar ──
+    if (type === 'scatterpolar' || type === 'scatterpolargl') {
+        return mode.includes('lines') ? 'line_polar' : 'scatter_polar';
+    }
+
+    // ── ternary ──
+    if (type === 'scatterternary') {
+        return mode.includes('lines') ? 'line_ternary' : 'scatter_ternary';
+    }
+
+    // ── geo ──
+    if (type === 'scattergeo') {
+        return mode.includes('lines') ? 'line_geo' : 'scatter_geo';
+    }
+
+    // ── map (covers both map and deprecated mapbox) ──
+    if (type === 'scattermap' || type === 'scattermapbox') {
+        return mode.includes('lines') ? 'line_map' : 'scatter_map';
+    }
+
+    // ── box family: box / strip ──
+    if (type === 'box') {
+        if (trace.boxpoints === 'all' && trace.fillcolor === 'rgba(255,255,255,0)') return 'strip';
+        return 'box';
+    }
+
+    // ── bar family: bar / histogram / frequency_bar / timeline ──
+    //
+    // All four arrive as plotly `bar` traces because DH pre-computes
+    // bins server-side.  We recover the dx intent from:
+    //   timeline:      orientation 'h' + xaxis type 'date' (or trace.base is set)
+    //   histogram:     bargap === 0 + trace has alignmentgroup
+    //   frequency_bar: y-axis titled 'count' but no alignmentgroup
+    //   bar:           none of the above
+    if (type === 'bar') {
+        if (trace.orientation === 'h' && layout?.xaxis?.type === 'date') return 'timeline';
+        if (layout?.bargap === 0 && trace.alignmentgroup !== undefined) return 'histogram';
+        // frequency_bar and histogram both count rows; histogram sets bargap=0.
+        // frequency_bar keeps default bargap but its y-axis is auto-titled "count".
+        const yTitle = layout?.yaxis?.title?.text;
+        if (yTitle === 'count' && trace.alignmentgroup === undefined) return 'frequency_bar';
+        return 'bar';
+    }
+
+    // ── density map ──
+    if (type === 'densitymap' || type === 'densitymapbox') return 'density_map';
+
+    // ── simple 1-to-1 mappings ──
+    const simple = {
+        histogram: 'histogram', heatmap: 'heatmap',
+        pie: 'pie', ohlc: 'ohlc', candlestick: 'candlestick',
+        treemap: 'treemap', sunburst: 'sunburst', icicle: 'icicle',
+        funnel: 'funnel', funnelarea: 'funnel_area',
+        violin: 'violin', indicator: 'indicator',
     };
-    return map[type] || type || 'unknown';
+    return simple[type] || type || 'unknown';
 }
 
 /** Get the most common trace type across all traces. */
-function primaryTraceType(traces) {
+function primaryTraceType(traces, layout) {
     if (!traces || traces.length === 0) return 'unknown';
     const counts = {};
     for (const t of traces) {
-        const type = normalizeTraceType(t.type);
+        const type = normalizeTraceType(t, layout);
         counts[type] = (counts[type] || 0) + 1;
     }
     return Object.entries(counts).sort((a, b) => b[1] - a[1])[0][0];
@@ -61,7 +137,7 @@ function parseFigurePayload(payload) {
     const layout = plotly?.layout || {};
 
     const title = layout.title?.text || '';
-    const traceType = primaryTraceType(traces);
+    const traceType = primaryTraceType(traces, layout);
 
     // Axes (supports multi-axis: xaxis, xaxis2, yaxis, yaxis2, ...)
     const axes = [];
@@ -77,7 +153,7 @@ function parseFigurePayload(payload) {
 
     // Trace summaries
     const traceList = traces.map(t => ({
-        type: normalizeTraceType(t.type),
+        type: normalizeTraceType(t, layout),
         name: t.name || '',
         mode: t.mode,
         color: t.marker?.color,

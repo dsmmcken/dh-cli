@@ -63,6 +63,8 @@ const HISTOGRAM_PAYLOAD = {
                 {
                     type: 'bar',
                     name: '',
+                    alignmentgroup: 'True',
+                    offsetgroup: '',
                     orientation: 'v',
                     hovertemplate: 'Y=%{x}<br>count=%{y}<extra></extra>',
                     marker: { color: '#636efa' },
@@ -221,14 +223,14 @@ describe('FigureStub scatter summary', () => {
 });
 
 describe('FigureStub histogram summary', () => {
-    it('sets bar type and 1 trace for histogram', async () => {
+    it('sets histogram type and 1 trace for histogram', async () => {
         const mock = createMockExportedFigure(HISTOGRAM_PAYLOAD);
         const { container, cleanup } = await renderWithAct(
             h(FigureStub, { objectId: 0, exportedObject: mock }),
             { checkFn: (body) => body.querySelector('[data-figure-type]') !== null }
         );
         const el = container.querySelector('[role="figure"]');
-        expect(el.getAttribute('data-figure-type')).toBe('bar');
+        expect(el.getAttribute('data-figure-type')).toBe('histogram');
         expect(el.getAttribute('data-trace-count')).toBe('1');
         cleanup();
     });
