@@ -12,23 +12,9 @@
  *   Response: {"exit_code":0, "stdout":"", "stderr":"...", "render_output":"..."}
  */
 
-// ── Suppress noisy warnings (same filters as oneshot.mjs) ──
-const SUPPRESSED = [
-    'was not wrapped in act',
-    'visible label',
-    'aria-label',
-    'Dashboard widget has changed',
-    'Retrying url',
-];
-const _origWarn = console.warn;
-const _origError = console.error;
-const _origLog = console.log;
-function isSuppressed(args) {
-    return SUPPRESSED.some(s => String(args[0] ?? '').includes(s));
-}
-console.log = (...a) => { if (!isSuppressed(a)) _origLog.apply(console, a); };
-console.warn = (...a) => { if (!isSuppressed(a)) _origWarn.apply(console, a); };
-console.error = (...a) => { if (!isSuppressed(a)) _origError.apply(console, a); };
+// ── Suppress noisy warnings (shared with oneshot.mjs) ──
+import { installConsoleSuppression } from '../src/suppress.mjs';
+installConsoleSuppression();
 
 import net from 'node:net';
 import fs from 'node:fs';

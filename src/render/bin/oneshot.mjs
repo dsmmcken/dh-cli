@@ -29,24 +29,8 @@
  *   --json               Output JSON instead of text
  */
 // ── Suppress noisy warnings that aren't actionable ──
-// React act() warnings, Spectrum aria-label warnings, WidgetHandler lifecycle logs
-const _origWarn = console.warn;
-const _origError = console.error;
-const SUPPRESSED = [
-    'was not wrapped in act',
-    'visible label',
-    'aria-label',
-    'Dashboard widget has changed',
-    'Retrying url',
-];
-function isSuppressed(args) {
-    const msg = String(args[0] ?? '');
-    return SUPPRESSED.some(s => msg.includes(s));
-}
-const _origLog = console.log;
-console.log = (...args) => { if (!isSuppressed(args)) _origLog.apply(console, args); };
-console.warn = (...args) => { if (!isSuppressed(args)) _origWarn.apply(console, args); };
-console.error = (...args) => { if (!isSuppressed(args)) _origError.apply(console, args); };
+import { installConsoleSuppression } from '../src/suppress.mjs';
+installConsoleSuppression();
 
 import { createTestClient, diagnoseWidget } from '../src/index.mjs';
 import { DaemonSession } from '../src/cli/session.mjs';
