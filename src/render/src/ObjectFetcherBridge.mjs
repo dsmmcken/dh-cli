@@ -36,12 +36,19 @@ export function createObjectFetchManager(connection) {
         subscribe(descriptor, onUpdate) {
             let cancelled = false;
 
+            // Null descriptors arrive during initial renders before the widget
+            // descriptor is resolved. Signal 'loading' so useWidget returns null.
+            if (descriptor == null) {
+                onUpdate({ status: 'loading' });
+                return () => { cancelled = true; };
+            }
+
             // Exported objects from the document tree (WidgetExportedObject) have
             // their own fetch()/reexport() methods. useExportedObject handles them
             // via fetchReexportedObject — we must NOT resolve them here or we'll
             // double-consume the descriptor. Keep them in 'loading' so useWidget
             // returns null and the fetchReexportedObject path takes over.
-            if (descriptor != null && typeof descriptor === 'object' &&
+            if (typeof descriptor === 'object' &&
                 typeof descriptor.fetch === 'function' && typeof descriptor.type === 'string') {
                 onUpdate({ status: 'loading' });
                 return () => { cancelled = true; };
