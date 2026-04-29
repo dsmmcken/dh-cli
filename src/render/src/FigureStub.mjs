@@ -227,8 +227,8 @@ function normalizeClassicPlotStyle(plotStyle) {
  * @param {object} figure - A dh.plot.Figure instance (has .charts, .title)
  */
 function parseClassicFigure(figure) {
-    const title = figure.title || '';
     const charts = figure.charts || [];
+    const title = figure.title || charts.find(c => c.title)?.title || '';
 
     const axes = [];
     const traceList = [];
@@ -247,10 +247,17 @@ function parseClassicFigure(figure) {
                 axes.push({ axis: axisType, label });
             }
         }
-        // Collect series as traces
+        // Collect series as traces. 3D charts (chart.is3d, chartType XYZ /
+        // CATEGORY_3D) reuse 2D plotStyles, so append _3d to keep parity with
+        // dx's scatter_3d / line_3d naming.
+        const is3d = chart.is3d === true;
         for (const series of (chart.series || [])) {
+            let type = normalizeClassicPlotStyle(series.plotStyle);
+            if (is3d && (type === 'scatter' || type === 'line' || type === 'area')) {
+                type = `${type}_3d`;
+            }
             traceList.push({
-                type: normalizeClassicPlotStyle(series.plotStyle),
+                type,
                 name: series.name || '',
                 mode: undefined,
                 color: undefined,
