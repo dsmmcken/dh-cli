@@ -222,11 +222,46 @@ function normalizeClassicPlotStyle(plotStyle) {
 }
 
 /**
+ * Subscribe to a classic Figure and wait for data so any MultiSeries
+ * fan-out (figures using `by=[...]`) materializes into concrete `series`
+ * entries before we read them. Bounded so we don't hang on figures
+ * that never emit (timeout) or aren't subscribable (not a Figure).
+ */
+// JSAPI event names for dh.plot.Figure. The constants aren't reachable
+// via figure.constructor (the GWT-compiled class isn't surfaced), so we
+// hardcode the wire values, which are stable.
+const FIGURE_EVENT_UPDATED = 'updated';
+const FIGURE_EVENT_SERIES_ADDED = 'seriesadded';
+
+async function waitForFigureData(figure, { initialTimeoutMs = 2000, settleMs = 50 } = {}) {
+    if (typeof figure.subscribe !== 'function' || typeof figure.nextEvent !== 'function') return;
+    try { figure.subscribe(); } catch { return; }
+
+    // Wait for the first 'updated' event (data has flowed in for the
+    // initial set of series). If the figure has MultiSeries, fan-out
+    // SERIES_ADDED events arrive before/around the first UPDATED.
+    try { await figure.nextEvent(FIGURE_EVENT_UPDATED, initialTimeoutMs); } catch { /* timeout — best-effort */ }
+
+    // Drain any SERIES_ADDED events that fire close together, with a
+    // short quiet window. Bounded so we don't loop forever.
+    const deadline = Date.now() + 1500;
+    while (Date.now() < deadline) {
+        try {
+            await figure.nextEvent(FIGURE_EVENT_SERIES_ADDED, settleMs);
+        } catch {
+            break; // no more series_added within settleMs → settled
+        }
+    }
+}
+
+/**
  * Parse a classic dh.plot.Figure object into the same summary shape
  * that parseFigurePayload() returns for dx figures.
  * @param {object} figure - A dh.plot.Figure instance (has .charts, .title)
  */
-function parseClassicFigure(figure) {
+async function parseClassicFigure(figure) {
+    await waitForFigureData(figure);
+
     const charts = figure.charts || [];
     const title = figure.title || charts.find(c => c.title)?.title || '';
 
@@ -249,19 +284,30 @@ function parseClassicFigure(figure) {
         }
         // Collect series as traces. 3D charts (chart.is3d, chartType XYZ /
         // CATEGORY_3D) reuse 2D plotStyles, so append _3d to keep parity with
-        // dx's scatter_3d / line_3d naming.
+        // dx's scatter_3d / line_3d naming. Also walk chart.multiSeries — when
+        // a figure uses `by=[...]`, the concrete series only materialize after
+        // data subscription, but the template MultiSeries is present at fetch
+        // and carries the plotStyle and series_name we want to surface.
         const is3d = chart.is3d === true;
-        for (const series of (chart.series || [])) {
-            let type = normalizeClassicPlotStyle(series.plotStyle);
+        const pushTrace = (item) => {
+            let type = normalizeClassicPlotStyle(item.plotStyle);
             if (is3d && (type === 'scatter' || type === 'line' || type === 'area')) {
                 type = `${type}_3d`;
             }
             traceList.push({
                 type,
-                name: series.name || '',
+                name: item.name || '',
                 mode: undefined,
                 color: undefined,
             });
+        };
+        const concrete = chart.series || [];
+        for (const series of concrete) pushTrace(series);
+        // Only fall back to multiSeries templates if fan-out hasn't
+        // materialized (subscribe failed / timed out). Otherwise the
+        // concrete series already represent each fanned-out trace.
+        if (concrete.length === 0) {
+            for (const ms of (chart.multiSeries || [])) pushTrace(ms);
         }
     }
 
